@@ -1,0 +1,23 @@
+[config]
+skip_core_tasks = true
+
+[tasks.build]
+description = "Build"
+command = "cargo"
+args = ["build"]
+
+[tasks.test]
+description = "Test"
+command = "./test.sh"
+dependencies = ["build"]
+
+[tasks.clean]
+description = "Clean"
+script = [
+    "cargo clean",
+    "rm -rf result/",
+]
+
+[tasks.default]
+description = "Default"
+dependencies = ["test"]

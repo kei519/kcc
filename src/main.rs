@@ -17,7 +17,6 @@ struct Tokenizer<'a> {
     index: usize,
 }
 
-
 impl<'a> Tokenizer<'a> {
     /// トークナイザの初期化。
     /// 
@@ -36,7 +35,45 @@ impl<'a> Tokenizer<'a> {
         if let Some(Token::Number(num)) = self.next() {
             return num;
         }
-        eprintln!("数ではありません");
+        self.error("数ではありません");
+        exit(1);
+    }
+
+    /// 先頭から数値を取り出して返す。
+    /// 先頭が数値でなければ`None`。
+    fn parse_number(&mut self) -> Option<u32> {
+        let mut is_first = true;
+        let mut n = 0;
+
+        loop {
+            match self.pos.peek() {
+                Some((i, c)) if c.is_ascii_digit() => {
+                    if is_first { is_first = false; }
+                    n = n * 10 + (*c as u8 - b'0') as u32;
+                    self.index = *i;
+                }
+                _ => {
+                    if is_first { return None; }
+                    return Some(n);
+                }
+            }
+            self.pos.next();
+        }
+    }
+
+    /// エラーメッセージを出す。
+    /// 
+    /// * `message` - 出力するメッセージ
+    fn error(&self, message: &str) {
+        eprintln!("{}", self.input);
+
+        for _ in 0..self.index {
+            eprint!(" ");
+        }
+
+        eprint!("^ ");
+        eprintln!("{}", message);
+
         exit(1);
     }
 }
@@ -50,7 +87,7 @@ impl<'a> Iterator for Tokenizer<'a> {
         let now;
 
         // 数値かどうかをチェック
-        match parse_number(&mut self.pos) {
+        match self.parse_number() {
             Some(num) => return Some(Token::Number(num)),
             _ => (),
         };
@@ -77,32 +114,8 @@ impl<'a> Iterator for Tokenizer<'a> {
         }
 
         // 予約文字でも数値でもなければトークナイズ失敗
-        eprintln!("トークナイズできません。");
+        self.error("トークナイズできません。");
         exit(1);
-    }
-}
-
-/// `Peekable<Enumerate<Chars>>`を受け取り、
-/// 先頭から数値を取り出して返す。
-/// 先頭が数値でなければ`None`。
-/// 
-/// * `enu` - 読まれる`Peekable<Enumerate<Chars>>`
-fn parse_number(chars: &mut Peekable<Enumerate<Chars>>) -> Option<u32> {
-    let mut is_first = true;
-    let mut n = 0;
-
-    loop {
-        match chars.peek() {
-            Some((_, c)) if c.is_ascii_digit() => {
-                if is_first { is_first = false; }
-                n = n * 10 + (*c as u8 - b'0') as u32;
-            }
-            _ => {
-                if is_first { return None; }
-                return Some(n);
-            }
-        }
-        chars.next();
     }
 }
 
@@ -133,9 +146,8 @@ fn main() {
             Token::Reserved('-') => {
                 println!("\tsub rax, {}", tokenizer.expect_num())
             },
-            any => {
-                eprintln!("{:?}", any);
-                eprintln!("演算子が見つかりません");
+            _ => {
+                tokenizer.error("演算子が見つかりません");
                 exit(1);
             },
         }

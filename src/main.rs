@@ -14,6 +14,7 @@ enum Token {
 struct Tokenizer<'a> {
     input: &'a str,
     pos: Peekable<Enumerate<Chars<'a>>>,
+    peeked: Option<Option<Token>>,
     index: usize,
 }
 
@@ -25,22 +26,13 @@ impl<'a> Tokenizer<'a> {
         return Tokenizer {
             input,
             pos: input.chars().enumerate().peekable(),
+            peeked: None,
             index: 0,
         };
     }
 
-    /// 次のトークンが数であったらその数値を返す。
-    /// そうでなければエラー出力をして終了。
-    fn expect_num(&mut self) -> u32 {
-        if let Some(Token::Number(num)) = self.next() {
-            return num;
-        }
-        self.error("数ではありません");
-        exit(1);
-    }
-
-    /// 先頭から数値を取り出して返す。
-    /// 先頭が数値でなければ`None`。
+    /// 処理の先頭から数値を取り出す。
+    /// 見つかれば`Some(_)`、なければ`None`を返す。
     fn parse_number(&mut self) -> Option<u32> {
         let mut is_first = true;
         let mut n = 0;
@@ -61,10 +53,16 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
+    /// 次のトークンを消費せずに見る。
+    fn peek(&mut self) -> Option<&Token> {
+        let next = self.next();
+        self.peeked.get_or_insert_with(|| next).as_ref()
+    }
+
     /// エラーメッセージを出す。
     /// 
     /// * `message` - 出力するメッセージ
-    fn error(&self, message: &str) {
+    fn error(&self, message: &str) -> ! {
         eprintln!("{}", self.input);
 
         for _ in 0..self.index {
@@ -74,7 +72,7 @@ impl<'a> Tokenizer<'a> {
         eprint!("^ ");
         eprintln!("{}", message);
 
-        exit(1);
+        exit(1)
     }
 }
 
@@ -84,6 +82,11 @@ impl<'a> Iterator for Tokenizer<'a> {
 
     /// 次のトークンを読み返す。
     fn next(&mut self) -> Option<Self::Item> {
+        match self.peeked.take() {
+            Some(content) => return content,
+            _ => (),
+        };
+
         let now;
 
         // 数値かどうかをチェック
@@ -105,17 +108,79 @@ impl<'a> Iterator for Tokenizer<'a> {
             return self.next();
         }
 
-        if now == '+' {
-            return Some(Token::Reserved('+'));
+        match now {
+            '+' => Some(Token::Reserved('+')),
+            '-' => Some(Token::Reserved('-')),
+            '*' => Some(Token::Reserved('*')),
+            '/' => Some(Token::Reserved('/')),
+            '(' => Some(Token::Reserved('(')),
+            ')' => Some(Token::Reserved(')')),
+            _ => {
+                // 予約文字でも数値でもなければトークナイズ失敗
+                self.error("トークナイズできません。");
+            }
+        }
+    }
+}
+
+/// ノードの種類を区別するための列挙型。
+#[derive(Debug)]
+enum NodeKind {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Num(u32),
+}
+
+/// ノードの種類と、左右を持っている構造体。
+/// ノードの本体。
+#[derive(Debug)]
+struct Node {
+    kind: NodeKind,
+    lhs: NodeTree,
+    rhs: NodeTree,
+}
+
+impl Node {
+    /// 自身のノードの種類と左右のノードからノードの本体を作る。
+    fn new(kind: NodeKind, lhs: NodeTree, rhs: NodeTree) -> Node {
+        Node {
+            kind,
+            lhs,
+            rhs,
+        }
+    }
+}
+
+/// ノードの本体を持つポインタ。
+#[derive(Debug)]
+enum NodeTree {
+    Empty,
+    NonEmpty(Box<Node>),
+}
+
+impl NodeTree {
+    /// 自身のノードの種類と左右のノード本体からノードへのポインタを作る。
+    fn new(kind: NodeKind, lhs: NodeTree, rhs: NodeTree) -> NodeTree {
+        NodeTree::NonEmpty(Box::new(Node::new(kind, lhs, rhs)))
+    }
+
+    /// 自身とその下のノードを表示する。
+    #[allow(dead_code)]
+    fn show(&self) {
+        let content;
+
+        match self {
+            NodeTree::Empty => return,
+            NodeTree::NonEmpty(b) => content = b,
         }
 
-        if now == '-' {
-            return Some(Token::Reserved('-'));
-        }
+        content.lhs.show();
 
-        // 予約文字でも数値でもなければトークナイズ失敗
-        self.error("トークナイズできません。");
-        exit(1);
+        println!("{:?}", content.kind);
+
+        content.rhs.show();
     }
 }
 
@@ -136,22 +201,107 @@ fn main() {
     println!(".global main");
     println!("main:");
 
-    println!("\tmov rax, {}", tokenizer.expect_num());
+    let tree = expr(&mut tokenizer);
+    gen(tree);
 
-    while let Some(token) = tokenizer.next() {
+    println!("\tpop rax");
+    println!("\tret");
+}
+
+/// トークナイザから式のノードツリーを作る。
+fn expr(tokenizer: &mut Tokenizer) -> NodeTree {
+    let mut result = mul(tokenizer);
+
+    while let Some(token) = tokenizer.peek() {
         match token {
             Token::Reserved('+') => {
-                println!("\tadd rax, {}", tokenizer.expect_num())
+                tokenizer.next();
+                result = NodeTree::new(NodeKind::Add, result, mul(tokenizer));
             },
             Token::Reserved('-') => {
-                println!("\tsub rax, {}", tokenizer.expect_num())
+                tokenizer.next();
+                result = NodeTree::new(NodeKind::Sub, result, mul(tokenizer));
             },
-            _ => {
-                tokenizer.error("演算子が見つかりません");
-                exit(1);
-            },
+            _ => break,
         }
     }
 
-    println!("\tret");
+    result
+}
+
+/// トークナイザから乗除項のノードツリーを作成。
+fn mul(tokenizer: &mut Tokenizer) -> NodeTree {
+    let mut result = primary(tokenizer);
+
+    while let Some(token) = tokenizer.peek() {
+        match token {
+            Token::Reserved('*') => {
+                tokenizer.next();
+                result = NodeTree::new(NodeKind::Mul, result, primary(tokenizer));
+            },
+            Token::Reserved('/') => {
+                tokenizer.next();
+                result = NodeTree::new(NodeKind::Div, result, primary(tokenizer));
+            },
+            _ => break,
+        }
+    }
+
+    result
+}
+
+/// トークナイザから和差項のノードツリーを作成。
+fn primary(tokenizer: &mut Tokenizer) -> NodeTree {
+    match tokenizer.next() {
+        Some(Token::Number(num)) => {
+            NodeTree::new(
+                NodeKind::Num(num),
+                NodeTree::Empty,
+                NodeTree::Empty
+            )
+        },
+        Some(Token::Reserved('(')) => {
+            let result = expr(tokenizer);
+            if let Some(Token::Reserved(')')) = tokenizer.next() {
+                result
+            } else {
+                tokenizer.error("')' で閉じられていません。");
+            }
+        },
+        _ => tokenizer.error("数ではありません。"),
+    }
+}
+
+/// ノードツリーからアセンブラを作成。
+fn gen(tree: NodeTree) {
+    let content;
+
+    match tree {
+        NodeTree::Empty => return,
+        NodeTree::NonEmpty(b) => content = b,
+    };
+
+    if let NodeKind::Num(num) = content.kind {
+        println!("\tpush {}", num);
+        return;
+    }
+
+    gen(content.lhs);
+    gen(content.rhs);
+
+    println!("\tpop rdi");
+    println!("\tpop rax");
+
+    match content.kind {
+        NodeKind::Add => println!("\tadd rax, rdi"),
+        NodeKind::Sub => println!("\tsub rax, rdi"),
+        NodeKind::Mul => println!("\timul rax, rdi"),
+        NodeKind::Div => {
+            println!("\tcqo");
+            println!("\tidiv rdi");
+        },
+        _ => (),
+    };
+
+    println!("\tpush rax");
 }

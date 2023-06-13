@@ -231,23 +231,38 @@ fn expr(tokenizer: &mut Tokenizer) -> NodeTree {
 
 /// トークナイザから乗除項のノードツリーを作成。
 fn mul(tokenizer: &mut Tokenizer) -> NodeTree {
-    let mut result = primary(tokenizer);
+    let mut result = unary(tokenizer);
 
     while let Some(token) = tokenizer.peek() {
         match token {
             Token::Reserved('*') => {
                 tokenizer.next();
-                result = NodeTree::new(NodeKind::Mul, result, primary(tokenizer));
+                result = NodeTree::new(NodeKind::Mul, result, unary(tokenizer));
             },
             Token::Reserved('/') => {
                 tokenizer.next();
-                result = NodeTree::new(NodeKind::Div, result, primary(tokenizer));
+                result = NodeTree::new(NodeKind::Div, result, unary(tokenizer));
             },
             _ => break,
         }
     }
 
     result
+}
+
+fn unary(tokenizer: &mut Tokenizer) -> NodeTree {
+    match tokenizer.peek() {
+        Some(Token::Reserved('+')) => {
+            tokenizer.next();
+            primary(tokenizer)
+        },
+        Some(Token::Reserved('-')) => {
+            tokenizer.next();
+            let zero_node = NodeTree::new(NodeKind::Num(0), NodeTree::Empty, NodeTree::Empty);
+            NodeTree::new(NodeKind::Sub, zero_node, primary(tokenizer))
+        },
+        _ => primary(tokenizer),
+    }
 }
 
 /// トークナイザから和差項のノードツリーを作成。

@@ -36,4 +36,12 @@ assert 4 '(3+5)/2'
 assert 10 '-10+20'
 assert 22 '5--23+(2*-3)'
 
+# 比較演算子
+assert 1 '1 == 4 > 3'
+assert 0 '2 * 3 == 5'
+assert 1 '1 != 5 < 4'
+assert 0 '9 != 81 / 9'
+assert 1 '8 <= 8'
+assert 1 '35 >= 10'
+
 echo OK

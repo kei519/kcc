@@ -1,32 +1,34 @@
 use std::env;
-use std::iter::{Enumerate, Peekable};
 use std::process::exit;
-use std::str::Chars;
 
 /// トークン（とその値）保持用の列挙型。
 #[derive(Debug)]
-enum Token {
-    Reserved(char),
+enum Token<'a> {
+    Reserved(&'a str),
     Number(u32),
 }
 
 /// トークナイズのための構造体。
-struct Tokenizer<'a> {
+struct Tokenizer<'a, 'b> {
     input: &'a str,
-    pos: Peekable<Enumerate<Chars<'a>>>,
-    peeked: Option<Option<Token>>,
+    pos: usize,
+    peeked: Option<Option<Token<'b>>>,
     index: usize,
 }
 
-impl<'a> Tokenizer<'a> {
+impl<'a, 'b> Tokenizer<'a, 'b> {
     /// トークナイザの初期化。
     /// 
     /// * `input` - トークナイズする入力。
     fn new(input: &str) -> Tokenizer {
         return Tokenizer {
+            /// 入力された文字列
             input,
-            pos: input.chars().enumerate().peekable(),
+            /// 現在のスライスの位置
+            pos: 0,
+            /// peek した次のトークン
             peeked: None,
+            /// 現在何文字読んだか
             index: 0,
         };
     }
@@ -38,19 +40,55 @@ impl<'a> Tokenizer<'a> {
         let mut n = 0;
 
         loop {
-            match self.pos.peek() {
-                Some((i, c)) if c.is_ascii_digit() => {
+            match self.input[self.pos..].chars().next() {
+                Some(c) if c.is_ascii_digit() => {
                     if is_first { is_first = false; }
-                    n = n * 10 + (*c as u8 - b'0') as u32;
-                    self.index = *i;
+                    n = n * 10 + (c as u8 - b'0') as u32;
+                    self.pos += c.len_utf8();
+                    self.index += 1;
                 }
                 _ => {
                     if is_first { return None; }
                     return Some(n);
                 }
             }
-            self.pos.next();
         }
+    }
+
+	/// 空白文字以外が来るまで読み飛ばす。
+    /// 読み飛ばさなかった場合は `false`、
+    /// 読み飛ばした場合は `true` を返す。
+    /// （今後スペースがあるか大事な局面があるため）
+    fn skip_whitespace(&mut self) -> bool {
+        let mut is_first = true;
+
+        while let Some(now) = self.input[self.pos..].chars().next() {
+            if now.is_ascii_whitespace() {
+                if is_first {
+                    is_first = false;
+                }
+                self.pos += now.len_utf8();
+                self.index += 1;
+            } else {
+                break;
+            }
+        }
+        !is_first
+    }
+
+	/// 先頭が指定された文字列と一致しているかを返す。
+    /// また、もし一致していた場合はその分だけ読み飛ばす。
+    fn cmp(&mut self, s: &str) -> bool {
+        let result = self.input[self.pos..].starts_with(s);
+
+        if result {
+            for c in s.chars() {
+                self.pos += c.len_utf8();
+            }
+            self.index += s.len();
+        }
+
+        result
     }
 
     /// 次のトークンを消費せずに見る。
@@ -76,9 +114,9 @@ impl<'a> Tokenizer<'a> {
     }
 }
 
-impl<'a> Iterator for Tokenizer<'a> {
+impl<'a, 'b> Iterator for Tokenizer<'a, 'b> {
     /// イテレータの `next()` で返す値は `Token` 型。
-    type Item = Token;
+    type Item = Token<'b>;
 
     /// 次のトークンを読み返す。
     fn next(&mut self) -> Option<Self::Item> {
@@ -87,7 +125,12 @@ impl<'a> Iterator for Tokenizer<'a> {
             _ => (),
         };
 
-        let now;
+        self.skip_whitespace();
+
+		// 最後まで読んでいたら `None` を返す
+        if self.index == self.input.len() {
+            return None;
+        }
 
         // 数値かどうかをチェック
         match self.parse_number() {
@@ -95,30 +138,32 @@ impl<'a> Iterator for Tokenizer<'a> {
             _ => (),
         };
 
-        match self.pos.next() {
-            None => return None,
-            Some((i, c)) => {
-                self.index = i;
-                now = c;
-            },
-        }
-
-        // 空白文字ならスキップ
-        if now.is_whitespace() {
-            return self.next();
-        }
-
-        match now {
-            '+' => Some(Token::Reserved('+')),
-            '-' => Some(Token::Reserved('-')),
-            '*' => Some(Token::Reserved('*')),
-            '/' => Some(Token::Reserved('/')),
-            '(' => Some(Token::Reserved('(')),
-            ')' => Some(Token::Reserved(')')),
-            _ => {
-                // 予約文字でも数値でもなければトークナイズ失敗
-                self.error("トークナイズできません。");
-            }
+        if self.cmp("+") {
+            Some(Token::Reserved("+"))
+        } else if self.cmp("-") {
+            Some(Token::Reserved("-"))
+        } else if self.cmp("*") {
+            Some(Token::Reserved("*"))
+        } else if self.cmp("/") {
+            Some(Token::Reserved("/"))
+        } else if self.cmp("(") {
+            Some(Token::Reserved("("))
+        } else if self.cmp(")") {
+            Some(Token::Reserved(")"))
+        } else if self.cmp("<=") {
+            Some(Token::Reserved("<="))
+        } else if self.cmp(">=") {
+            Some(Token::Reserved(">="))
+        } else if self.cmp("<") {
+            Some(Token::Reserved("<"))
+        } else if self.cmp(">") {
+            Some(Token::Reserved(">"))
+        } else if self.cmp("==") {
+            Some(Token::Reserved("=="))
+        } else if self.cmp("!=") {
+            Some(Token::Reserved("!="))
+        } else {
+            self.error("トークナイズできません。")
         }
     }
 }
@@ -126,10 +171,14 @@ impl<'a> Iterator for Tokenizer<'a> {
 /// ノードの種類を区別するための列挙型。
 #[derive(Debug)]
 enum NodeKind {
-    Add,
-    Sub,
-    Mul,
-    Div,
+    Add, // +
+    Sub, // -
+    Mul, // *
+    Div, // /
+    Eq, // ==
+    NE, // !=
+    Lt, // <
+    LE, // <=
     Num(u32),
 }
 
@@ -208,17 +257,69 @@ fn main() {
     println!("\tret");
 }
 
-/// トークナイザから式のノードツリーを作る。
 fn expr(tokenizer: &mut Tokenizer) -> NodeTree {
+    equality(tokenizer)
+}
+
+fn equality(tokenizer: &mut Tokenizer) -> NodeTree {
+    let mut result = relational(tokenizer);
+
+    while let Some(token) = tokenizer.peek() {
+        match token {
+            Token::Reserved("==") => {
+                tokenizer.next();
+                result = NodeTree::new(NodeKind::Eq, result, relational(tokenizer))
+            },
+            Token::Reserved("!=") => {
+                tokenizer.next();
+                result = NodeTree::new(NodeKind::NE, result, relational(tokenizer))
+            },
+            _ => break,
+        }
+    }
+
+    result
+}
+
+fn relational(tokenizer: &mut Tokenizer) -> NodeTree {
+    let mut result = add(tokenizer);
+
+    while let Some(token) = tokenizer.peek() {
+        match token {
+            Token::Reserved("<=") => {
+                tokenizer.next();
+                result = NodeTree::new(NodeKind::LE, result, add(tokenizer));
+            },
+            Token::Reserved("<") => {
+                tokenizer.next();
+                result = NodeTree::new(NodeKind::Lt, result, add(tokenizer));
+            },
+            Token::Reserved(">=") => {
+                tokenizer.next();
+                result = NodeTree::new(NodeKind::LE, add(tokenizer), result);
+            },
+            Token::Reserved(">") => {
+                tokenizer.next();
+                result = NodeTree::new(NodeKind::Lt, add(tokenizer), result);
+            },
+            _ => break,
+        }
+    }
+
+    result
+}
+
+/// トークナイザから式のノードツリーを作る。
+fn add(tokenizer: &mut Tokenizer) -> NodeTree {
     let mut result = mul(tokenizer);
 
     while let Some(token) = tokenizer.peek() {
         match token {
-            Token::Reserved('+') => {
+            Token::Reserved("+") => {
                 tokenizer.next();
                 result = NodeTree::new(NodeKind::Add, result, mul(tokenizer));
             },
-            Token::Reserved('-') => {
+            Token::Reserved("-") => {
                 tokenizer.next();
                 result = NodeTree::new(NodeKind::Sub, result, mul(tokenizer));
             },
@@ -235,11 +336,11 @@ fn mul(tokenizer: &mut Tokenizer) -> NodeTree {
 
     while let Some(token) = tokenizer.peek() {
         match token {
-            Token::Reserved('*') => {
+            Token::Reserved("*") => {
                 tokenizer.next();
                 result = NodeTree::new(NodeKind::Mul, result, unary(tokenizer));
             },
-            Token::Reserved('/') => {
+            Token::Reserved("/") => {
                 tokenizer.next();
                 result = NodeTree::new(NodeKind::Div, result, unary(tokenizer));
             },
@@ -252,11 +353,11 @@ fn mul(tokenizer: &mut Tokenizer) -> NodeTree {
 
 fn unary(tokenizer: &mut Tokenizer) -> NodeTree {
     match tokenizer.peek() {
-        Some(Token::Reserved('+')) => {
+        Some(Token::Reserved("+")) => {
             tokenizer.next();
             primary(tokenizer)
         },
-        Some(Token::Reserved('-')) => {
+        Some(Token::Reserved("-")) => {
             tokenizer.next();
             let zero_node = NodeTree::new(NodeKind::Num(0), NodeTree::Empty, NodeTree::Empty);
             NodeTree::new(NodeKind::Sub, zero_node, primary(tokenizer))
@@ -275,9 +376,9 @@ fn primary(tokenizer: &mut Tokenizer) -> NodeTree {
                 NodeTree::Empty
             )
         },
-        Some(Token::Reserved('(')) => {
+        Some(Token::Reserved("(")) => {
             let result = expr(tokenizer);
-            if let Some(Token::Reserved(')')) = tokenizer.next() {
+            if let Some(Token::Reserved(")")) = tokenizer.next() {
                 result
             } else {
                 tokenizer.error("')' で閉じられていません。");
@@ -314,6 +415,26 @@ fn gen(tree: NodeTree) {
         NodeKind::Div => {
             println!("\tcqo");
             println!("\tidiv rdi");
+        },
+        NodeKind::Eq => {
+            println!("\tcmp rax, rdi");
+            println!("\tsete al");
+            println!("\tmovzb rax, al");
+        },
+        NodeKind::NE => {
+            println!("\tcmp rax, rdi");
+            println!("\tsetne al");
+            println!("\tmovzb rax, al");
+        },
+        NodeKind::Lt => {
+            println!("\tcmp rax, rdi");
+            println!("\tsetl al");
+            println!("\tmovzb rax, al");
+        },
+        NodeKind::LE => {
+            println!("\tcmp rax, rdi");
+            println!("\tsetle al");
+            println!("\tmovzb rax, al");
         },
         _ => (),
     };

@@ -65,10 +65,12 @@ impl NodeTree {
     }
 }
 
+/// 式をノードツリーに変換する。
 pub(crate) fn expr(tokenizer: &mut Tokenizer) -> NodeTree {
     equality(tokenizer)
 }
 
+/// 等号・不等号条件をノードツリーに変換する。
 fn equality(tokenizer: &mut Tokenizer) -> NodeTree {
     let mut result = relational(tokenizer);
 
@@ -89,6 +91,7 @@ fn equality(tokenizer: &mut Tokenizer) -> NodeTree {
     result
 }
 
+/// 不等号条件をノードツリーに変換する。
 fn relational(tokenizer: &mut Tokenizer) -> NodeTree {
     let mut result = add(tokenizer);
 
@@ -117,7 +120,7 @@ fn relational(tokenizer: &mut Tokenizer) -> NodeTree {
     result
 }
 
-/// トークナイザから式のノードツリーを作る。
+/// 加減項のノードツリーに変換する。
 fn add(tokenizer: &mut Tokenizer) -> NodeTree {
     let mut result = mul(tokenizer);
 
@@ -138,7 +141,7 @@ fn add(tokenizer: &mut Tokenizer) -> NodeTree {
     result
 }
 
-/// トークナイザから乗除項のノードツリーを作成。
+/// 乗除項のノードツリーに変換する。
 fn mul(tokenizer: &mut Tokenizer) -> NodeTree {
     let mut result = unary(tokenizer);
 
@@ -159,6 +162,7 @@ fn mul(tokenizer: &mut Tokenizer) -> NodeTree {
     result
 }
 
+/// 単項プラス・マイナスをノードツリーに変換する。
 fn unary(tokenizer: &mut Tokenizer) -> NodeTree {
     match tokenizer.peek() {
         Some(Token::Reserved("+")) => {
@@ -174,7 +178,7 @@ fn unary(tokenizer: &mut Tokenizer) -> NodeTree {
     }
 }
 
-/// トークナイザから和差項のノードツリーを作成。
+/// 数値、もしくは括弧で囲まれた式をノードツリーに変換する。
 fn primary(tokenizer: &mut Tokenizer) -> NodeTree {
     match tokenizer.next() {
         Some(Token::Number(num)) => {

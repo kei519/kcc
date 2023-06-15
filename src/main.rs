@@ -23,9 +23,18 @@ fn main() {
     println!(".global main");
     println!("main:");
 
+    // プロローグ
+    println!("\tpush rbp");
+    println!("\tmov rbp, rsp");
+
     let tree = expr(&mut tokenizer);
     gen(tree);
 
     println!("\tpop rax");
+
+	// エピローグ
+    println!("\tmov rsp, rbp");
+    println!("\tpop rbp");
+
     println!("\tret");
 }

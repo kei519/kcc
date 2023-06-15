@@ -1,34 +1,41 @@
 use std::process::exit;
 
+/// 予約されている文字を保持。
+const RESERVEDS: [&str; 14] = ["+", "-", "*", "/", "(", ")", "<=", ">=", "<", ">", "==", "!=", "=", ";"];
+
 /// トークン（とその値）保持用の列挙型。
 #[derive(Debug)]
 pub(crate) enum Token<'a> {
     Reserved(&'a str),
+    Identifier(usize),  // この`usize`はオフセット
     Number(u32),
 }
 
 /// トークナイズのための構造体。
-pub(crate) struct Tokenizer<'a, 'b> {
+pub(crate) struct Tokenizer<'a> {
+    /// 入力された文字列
     input: &'a str,
+    /// 現在のスライスの位置
     pos: usize,
-    peeked: Option<Option<Token<'b>>>,
+    /// peek した次のトークン
+    peeked: Option<Option<Token<'a>>>,
+    /// 現在何文字読んだか
     index: usize,
+    /// ローカル変数のリストを保持
+    locals: Vec<LVar<'a>>,
 }
 
-impl<'a, 'b> Tokenizer<'a, 'b> {
+impl<'a> Tokenizer<'a> {
     /// トークナイザの初期化。
     /// 
     /// * `input` - トークナイズする入力。
     pub(crate) fn new(input: &str) -> Tokenizer {
         return Tokenizer {
-            /// 入力された文字列
             input,
-            /// 現在のスライスの位置
             pos: 0,
-            /// peek した次のトークン
             peeked: None,
-            /// 現在何文字読んだか
             index: 0,
+            locals: Vec::new(),
         };
     }
 
@@ -96,6 +103,56 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
         self.peeked.get_or_insert_with(|| next).as_ref()
     }
 
+    /// 変数を検索して、見つかればそれを返す。
+    /// 見つからなければ`None`。
+    pub(crate) fn find_lvar(&self, name: &str) -> Option<&LVar> {
+        self.locals.iter().find(|e| e.name == name)
+    }
+
+
+    /// 変数名（予約文字でないもの）をパースする。
+    /// その変数のオフセットを返す。
+    pub(crate) fn parse_lvar(&mut self) -> Option<usize> {
+        let first_pos = self.pos;
+
+        loop {
+            // 予約文字が先頭になったら終了
+            if RESERVEDS.iter().any(|e| self.input[self.pos..].starts_with(e)) {
+                break;
+            }
+
+            // 先頭が予約文字で始まっていなければ、１文字ずつ読んでいく
+            match self.input[self.pos..].chars().next() {
+                None => break,
+                Some(c) => {
+                    if c.is_ascii_whitespace() { break; }
+
+                    self.pos += c.len_utf8();
+                    self.index += 1;
+                }
+            }
+        }
+
+        if first_pos == self.pos { return None; }
+
+        if let Some(lvar)
+            = self.find_lvar(&self.input[first_pos..self.pos])
+        {
+            return Some(lvar.offset);
+        } else {
+            let lvar = LVar::new(&self.input[first_pos..self.pos],
+                                           (self.num_lvar() + 1) * 8);
+            let offset = lvar.offset;
+            self.locals.push(lvar);
+            return Some(offset);
+        }
+    }
+
+    /// 現在の変数の数を返す。
+    pub(crate) fn num_lvar(&self) -> usize {
+        self.locals.len()
+    }
+
     /// エラーメッセージを出す。
     /// 
     /// * `message` - 出力するメッセージ
@@ -113,9 +170,9 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Iterator for Tokenizer<'a, 'b> {
+impl<'a> Iterator for Tokenizer<'a> {
     /// イテレータの `next()` で返す値は `Token` 型。
-    type Item = Token<'b>;
+    type Item = Token<'a>;
 
     /// 次のトークンを読み返す。
     fn next(&mut self) -> Option<Self::Item> {
@@ -132,37 +189,30 @@ impl<'a, 'b> Iterator for Tokenizer<'a, 'b> {
         }
 
         // 数値かどうかをチェック
-        match self.parse_number() {
-            Some(num) => return Some(Token::Number(num)),
-            _ => (),
-        };
+        if let Some(num) = self.parse_number() {
+            return Some(Token::Number(num));
+        }
 
-        if self.cmp("+") {
-            Some(Token::Reserved("+"))
-        } else if self.cmp("-") {
-            Some(Token::Reserved("-"))
-        } else if self.cmp("*") {
-            Some(Token::Reserved("*"))
-        } else if self.cmp("/") {
-            Some(Token::Reserved("/"))
-        } else if self.cmp("(") {
-            Some(Token::Reserved("("))
-        } else if self.cmp(")") {
-            Some(Token::Reserved(")"))
-        } else if self.cmp("<=") {
-            Some(Token::Reserved("<="))
-        } else if self.cmp(">=") {
-            Some(Token::Reserved(">="))
-        } else if self.cmp("<") {
-            Some(Token::Reserved("<"))
-        } else if self.cmp(">") {
-            Some(Token::Reserved(">"))
-        } else if self.cmp("==") {
-            Some(Token::Reserved("=="))
-        } else if self.cmp("!=") {
-            Some(Token::Reserved("!="))
+        if let Some(reserved) = RESERVEDS.iter().find(|e| self.cmp(&e)) {
+            Some(Token::Reserved(reserved))
+        } else if let Some(offset) = self.parse_lvar() {
+            Some(Token::Identifier(offset))
         } else {
             self.error("トークナイズできません。")
         }
+    }
+}
+
+/// 変数を保持するための構造体。
+pub(crate) struct LVar<'a> {
+    /// 変数名
+    name: &'a str,
+    /// rbp からのオフセット（マイナス方向）
+    offset: usize,
+}
+
+impl<'a> LVar<'a> {
+    pub(crate) fn new(name: &str, offset: usize) -> LVar {
+        LVar { name, offset }
     }
 }

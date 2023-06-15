@@ -11,6 +11,8 @@ pub(crate) enum NodeKind {
     NE, // !=
     Lt, // <
     LE, // <=
+    Assign,
+    LVar(usize),
     Num(u32),
 }
 
@@ -65,9 +67,40 @@ impl NodeTree {
     }
 }
 
+pub(crate) fn program(tokenizer: &mut Tokenizer) -> Vec<NodeTree> {
+    let mut result = Vec::new();
+
+    while let Some(_) = tokenizer.peek() {
+        result.push(stmt(tokenizer));
+    }
+
+    result
+}
+
+pub(crate) fn stmt(tokenizer: &mut Tokenizer) -> NodeTree {
+    let result = expr(tokenizer);
+    if let Some(Token::Reserved(";")) = tokenizer.peek() {
+        tokenizer.next();
+        result
+    } else {
+        tokenizer.error(r#"";" で文が終了していません。"#)
+    }
+}
+
 /// 式をノードツリーに変換する。
 pub(crate) fn expr(tokenizer: &mut Tokenizer) -> NodeTree {
-    equality(tokenizer)
+    assign(tokenizer)
+}
+
+pub(crate) fn assign(tokenizer: &mut Tokenizer) -> NodeTree {
+    let mut result = equality(tokenizer);
+
+    if let Some(Token::Reserved("=")) = tokenizer.peek() {
+        tokenizer.next();
+        result = NodeTree::new(NodeKind::Assign, result, assign(tokenizer));
+    }
+
+    result
 }
 
 /// 等号・不等号条件をノードツリーに変換する。
@@ -188,6 +221,13 @@ fn primary(tokenizer: &mut Tokenizer) -> NodeTree {
                 NodeTree::Empty
             )
         },
+        Some(Token::Identifier(offset)) => {
+            NodeTree::new(
+                NodeKind::LVar(offset),
+                NodeTree::Empty,
+                NodeTree::Empty
+            )
+        },
         Some(Token::Reserved("(")) => {
             let result = expr(tokenizer);
             if let Some(Token::Reserved(")")) = tokenizer.next() {
@@ -200,6 +240,28 @@ fn primary(tokenizer: &mut Tokenizer) -> NodeTree {
     }
 }
 
+/// 左辺値であるかを検証し、左辺値であればそのアドレスをpush。
+fn gen_lvar(tree: NodeTree) {
+    let content;
+
+    match tree {
+        NodeTree::Empty => {
+            eprintln!("代入の左辺値が変数ではありません。");
+            std::process::exit(1);
+        },
+        NodeTree::NonEmpty(b) => content = b,
+    };
+
+    if let NodeKind::LVar(offset) = content.kind {
+        println!("\tmov rax, rbp");
+        println!("\tsub rax, {}", offset);
+        println!("\tpush rax");
+    } else {
+        eprintln!("代入の左辺値が変数ではありません。");
+        std::process::exit(1)
+    }
+}
+
 /// ノードツリーからアセンブラを作成。
 pub(crate) fn gen(tree: NodeTree) {
     let content;
@@ -209,9 +271,29 @@ pub(crate) fn gen(tree: NodeTree) {
         NodeTree::NonEmpty(b) => content = b,
     };
 
-    if let NodeKind::Num(num) = content.kind {
-        println!("\tpush {}", num);
-        return;
+    match content.kind {
+        NodeKind::Num(num) => {
+            println!("\tpush {}", num);
+            return;
+        },
+        NodeKind::LVar(offset) => {
+            println!("\tmov rax, rbp");
+            println!("\tsub rax, {}", offset);
+            println!("\tmov rax, [rax]");
+            println!("\tpush rax");
+            return;
+        },
+        NodeKind::Assign => {
+            gen_lvar(content.lhs);
+            gen(content.rhs);
+
+            println!("\tpop rdi");
+            println!("\tpop rax");
+            println!("\tmov [rax], rdi");
+            println!("\tpush rdi");
+            return;
+        },
+        _ => (),
     }
 
     gen(content.lhs);

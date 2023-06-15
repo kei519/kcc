@@ -24,24 +24,29 @@ assert() {
 }
 
 # 加減算
-assert 21 "5+20-4"
-assert 41 " 12 + 34 - 5 "
+assert 21 '5+20-4;'
+assert 41 ' 12 + 34 - 5 ;'
 
 # 四則演算
-assert 47 '5+6*7'
-assert 15 '5*(9-6)'
-assert 4 '(3+5)/2'
+assert 47 '5+6*7;'
+assert 15 '5*(9-6);'
+assert 4 '(3+5)/2;'
 
 # 単項±
-assert 10 '-10+20'
-assert 22 '5--23+(2*-3)'
+assert 10 '-10+20;'
+assert 22 '5--23+(2*-3);'
 
 # 比較演算子
-assert 1 '1 == 4 > 3'
-assert 0 '2 * 3 == 5'
-assert 1 '1 != 5 < 4'
-assert 0 '9 != 81 / 9'
-assert 1 '8 <= 8'
-assert 1 '35 >= 10'
+assert 1 '1 == 4 > 3;'
+assert 0 '2 * 3 == 5;'
+assert 1 '1 != 5 < 4;'
+assert 0 '9 != 81 / 9;'
+assert 1 '8 <= 8;'
+assert 1 '35 >= 10;'
+
+# 変数テスト
+assert 12 'a=12;a;'
+assert 5 'v1 = 3; v2 = 2; v1 + v2;'
+assert 8 'a=b=4;a+b;'
 
 echo OK

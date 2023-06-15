@@ -23,16 +23,21 @@ fn main() {
     println!(".global main");
     println!("main:");
 
+	// ツリーを生成する。
+    let trees = program(&mut tokenizer);
+
     // プロローグ
     println!("\tpush rbp");
     println!("\tmov rbp, rsp");
+    println!("\tsub rsp, {}", tokenizer.num_lvar() * 8);
 
-    let tree = expr(&mut tokenizer);
-    gen(tree);
+    for tree in trees {
+        gen(tree);
+    }
 
     println!("\tpop rax");
 
-	// エピローグ
+    // エピローグ
     println!("\tmov rsp, rbp");
     println!("\tpop rbp");
 

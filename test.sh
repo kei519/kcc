@@ -49,4 +49,8 @@ assert 12 'a=12;a;'
 assert 5 'v1 = 3; v2 = 2; v1 + v2;'
 assert 8 'a=b=4;a+b;'
 
+# returnテスト
+assert 1 'return 1;'
+assert 100 'a = 25; return a * 4; 1;'
+
 echo OK

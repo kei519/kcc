@@ -12,6 +12,7 @@ pub(crate) enum NodeKind {
     Lt, // <
     LE, // <=
     Assign,
+    Return,
     LVar(usize),
     Num(u32),
 }
@@ -78,7 +79,17 @@ pub(crate) fn program(tokenizer: &mut Tokenizer) -> Vec<NodeTree> {
 }
 
 pub(crate) fn stmt(tokenizer: &mut Tokenizer) -> NodeTree {
-    let result = expr(tokenizer);
+    let result;
+
+    if let Some(Token::Return) = tokenizer.peek() {
+        tokenizer.next();
+        result = NodeTree::new(NodeKind::Return,
+                             expr(tokenizer),
+                             NodeTree::Empty);
+    } else {
+        result = expr(tokenizer);
+    }
+
     if let Some(Token::Reserved(";")) = tokenizer.peek() {
         tokenizer.next();
         result
@@ -272,6 +283,14 @@ pub(crate) fn gen(tree: NodeTree) {
     };
 
     match content.kind {
+        NodeKind::Return => {
+            gen(content.lhs);
+            println!("\tpop rax");
+            println!("\tmov rsp, rbp");
+            println!("pop rbp");
+            println!("ret");
+            return;
+        }
         NodeKind::Num(num) => {
             println!("\tpush {}", num);
             return;

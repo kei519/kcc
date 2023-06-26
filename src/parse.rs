@@ -7,6 +7,7 @@ const RESERVEDS: [&str; 14] = ["+", "-", "*", "/", "(", ")", "<=", ">=", "<", ">
 #[derive(Debug)]
 pub(crate) enum Token<'a> {
     Reserved(&'a str),
+    Return,
     Identifier(usize),  // この`usize`はオフセット
     Number(u32),
 }
@@ -97,6 +98,25 @@ impl<'a> Tokenizer<'a> {
         result
     }
 
+    /// 渡された文字列で始まり、その直後にASCII空白文字があるかどうかを返す。
+    /// あった場合には、渡された文字列分読み飛ばす。
+    fn starts_with_before_whitespace(&mut self, s: &str) -> bool {
+        let result = self.input[self.pos..].starts_with(s);
+
+        if !result { return false; }
+
+        match self.input[self.pos + s.len()..].chars().next() {
+            Some(c) if !c.is_ascii_whitespace() => return false,
+            _ => (),
+        }
+
+        for c in s.chars() {
+            self.pos += c.len_utf8();
+            self.index += 1;
+        }
+        return true;
+    }
+
     /// 次のトークンを消費せずに見る。
     pub(crate) fn peek(&mut self) -> Option<&Token> {
         let next = self.next();
@@ -183,6 +203,10 @@ impl<'a> Iterator for Tokenizer<'a> {
 
         self.skip_whitespace();
 
+        if self.starts_with_before_whitespace("return") {
+            return Some(Token::Return);
+        }
+
         // 最後まで読んでいたら `None` を返す
         if self.index == self.input.len() {
             return None;
@@ -192,6 +216,8 @@ impl<'a> Iterator for Tokenizer<'a> {
         if let Some(num) = self.parse_number() {
             return Some(Token::Number(num));
         }
+
+        
 
         if let Some(reserved) = RESERVEDS.iter().find(|e| self.cmp(&e)) {
             Some(Token::Reserved(reserved))

@@ -7,10 +7,10 @@ pub(crate) enum NodeKind {
     Sub, // -
     Mul, // *
     Div, // /
-    Eq, // ==
-    NE, // !=
-    Lt, // <
-    LE, // <=
+    Eq,  // ==
+    NE,  // !=
+    Lt,  // <
+    LE,  // <=
     Assign,
     Return,
     LVar(usize),
@@ -29,11 +29,7 @@ pub(crate) struct Node {
 impl Node {
     /// 自身のノードの種類と左右のノードからノードの本体を作る。
     pub(crate) fn new(kind: NodeKind, lhs: NodeTree, rhs: NodeTree) -> Node {
-        Node {
-            kind,
-            lhs,
-            rhs,
-        }
+        Node { kind, lhs, rhs }
     }
 }
 
@@ -83,9 +79,7 @@ pub(crate) fn stmt(tokenizer: &mut Tokenizer) -> NodeTree {
 
     if let Some(Token::Return) = tokenizer.peek() {
         tokenizer.next();
-        result = NodeTree::new(NodeKind::Return,
-                             expr(tokenizer),
-                             NodeTree::Empty);
+        result = NodeTree::new(NodeKind::Return, expr(tokenizer), NodeTree::Empty);
     } else {
         result = expr(tokenizer);
     }
@@ -123,11 +117,11 @@ fn equality(tokenizer: &mut Tokenizer) -> NodeTree {
             Token::Reserved("==") => {
                 tokenizer.next();
                 result = NodeTree::new(NodeKind::Eq, result, relational(tokenizer))
-            },
+            }
             Token::Reserved("!=") => {
                 tokenizer.next();
                 result = NodeTree::new(NodeKind::NE, result, relational(tokenizer))
-            },
+            }
             _ => break,
         }
     }
@@ -144,19 +138,19 @@ fn relational(tokenizer: &mut Tokenizer) -> NodeTree {
             Token::Reserved("<=") => {
                 tokenizer.next();
                 result = NodeTree::new(NodeKind::LE, result, add(tokenizer));
-            },
+            }
             Token::Reserved("<") => {
                 tokenizer.next();
                 result = NodeTree::new(NodeKind::Lt, result, add(tokenizer));
-            },
+            }
             Token::Reserved(">=") => {
                 tokenizer.next();
                 result = NodeTree::new(NodeKind::LE, add(tokenizer), result);
-            },
+            }
             Token::Reserved(">") => {
                 tokenizer.next();
                 result = NodeTree::new(NodeKind::Lt, add(tokenizer), result);
-            },
+            }
             _ => break,
         }
     }
@@ -173,11 +167,11 @@ fn add(tokenizer: &mut Tokenizer) -> NodeTree {
             Token::Reserved("+") => {
                 tokenizer.next();
                 result = NodeTree::new(NodeKind::Add, result, mul(tokenizer));
-            },
+            }
             Token::Reserved("-") => {
                 tokenizer.next();
                 result = NodeTree::new(NodeKind::Sub, result, mul(tokenizer));
-            },
+            }
             _ => break,
         }
     }
@@ -194,11 +188,11 @@ fn mul(tokenizer: &mut Tokenizer) -> NodeTree {
             Token::Reserved("*") => {
                 tokenizer.next();
                 result = NodeTree::new(NodeKind::Mul, result, unary(tokenizer));
-            },
+            }
             Token::Reserved("/") => {
                 tokenizer.next();
                 result = NodeTree::new(NodeKind::Div, result, unary(tokenizer));
-            },
+            }
             _ => break,
         }
     }
@@ -212,12 +206,12 @@ fn unary(tokenizer: &mut Tokenizer) -> NodeTree {
         Some(Token::Reserved("+")) => {
             tokenizer.next();
             primary(tokenizer)
-        },
+        }
         Some(Token::Reserved("-")) => {
             tokenizer.next();
             let zero_node = NodeTree::new(NodeKind::Num(0), NodeTree::Empty, NodeTree::Empty);
             NodeTree::new(NodeKind::Sub, zero_node, primary(tokenizer))
-        },
+        }
         _ => primary(tokenizer),
     }
 }
@@ -226,19 +220,11 @@ fn unary(tokenizer: &mut Tokenizer) -> NodeTree {
 fn primary(tokenizer: &mut Tokenizer) -> NodeTree {
     match tokenizer.next() {
         Some(Token::Number(num)) => {
-            NodeTree::new(
-                NodeKind::Num(num),
-                NodeTree::Empty,
-                NodeTree::Empty
-            )
-        },
+            NodeTree::new(NodeKind::Num(num), NodeTree::Empty, NodeTree::Empty)
+        }
         Some(Token::Identifier(offset)) => {
-            NodeTree::new(
-                NodeKind::LVar(offset),
-                NodeTree::Empty,
-                NodeTree::Empty
-            )
-        },
+            NodeTree::new(NodeKind::LVar(offset), NodeTree::Empty, NodeTree::Empty)
+        }
         Some(Token::Reserved("(")) => {
             let result = expr(tokenizer);
             if let Some(Token::Reserved(")")) = tokenizer.next() {
@@ -246,7 +232,7 @@ fn primary(tokenizer: &mut Tokenizer) -> NodeTree {
             } else {
                 tokenizer.error("')' で閉じられていません。");
             }
-        },
+        }
         _ => tokenizer.error("数ではありません。"),
     }
 }
@@ -259,7 +245,7 @@ fn gen_lvar(tree: NodeTree) {
         NodeTree::Empty => {
             eprintln!("代入の左辺値が変数ではありません。");
             std::process::exit(1);
-        },
+        }
         NodeTree::NonEmpty(b) => content = b,
     };
 
@@ -294,14 +280,14 @@ pub(crate) fn gen(tree: NodeTree) {
         NodeKind::Num(num) => {
             println!("\tpush {}", num);
             return;
-        },
+        }
         NodeKind::LVar(offset) => {
             println!("\tmov rax, rbp");
             println!("\tsub rax, {}", offset);
             println!("\tmov rax, [rax]");
             println!("\tpush rax");
             return;
-        },
+        }
         NodeKind::Assign => {
             gen_lvar(content.lhs);
             gen(content.rhs);
@@ -311,7 +297,7 @@ pub(crate) fn gen(tree: NodeTree) {
             println!("\tmov [rax], rdi");
             println!("\tpush rdi");
             return;
-        },
+        }
         _ => (),
     }
 
@@ -328,27 +314,27 @@ pub(crate) fn gen(tree: NodeTree) {
         NodeKind::Div => {
             println!("\tcqo");
             println!("\tidiv rdi");
-        },
+        }
         NodeKind::Eq => {
             println!("\tcmp rax, rdi");
             println!("\tsete al");
             println!("\tmovzb rax, al");
-        },
+        }
         NodeKind::NE => {
             println!("\tcmp rax, rdi");
             println!("\tsetne al");
             println!("\tmovzb rax, al");
-        },
+        }
         NodeKind::Lt => {
             println!("\tcmp rax, rdi");
             println!("\tsetl al");
             println!("\tmovzb rax, al");
-        },
+        }
         NodeKind::LE => {
             println!("\tcmp rax, rdi");
             println!("\tsetle al");
             println!("\tmovzb rax, al");
-        },
+        }
         _ => (),
     };
 

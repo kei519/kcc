@@ -1,14 +1,16 @@
 use std::process::exit;
 
 /// 予約されている文字を保持。
-const RESERVEDS: [&str; 14] = ["+", "-", "*", "/", "(", ")", "<=", ">=", "<", ">", "==", "!=", "=", ";"];
+const RESERVEDS: [&str; 14] = [
+    "+", "-", "*", "/", "(", ")", "<=", ">=", "<", ">", "==", "!=", "=", ";",
+];
 
 /// トークン（とその値）保持用の列挙型。
 #[derive(Debug)]
 pub(crate) enum Token<'a> {
     Reserved(&'a str),
     Return,
-    Identifier(usize),  // この`usize`はオフセット
+    Identifier(usize), // この`usize`はオフセット
     Number(u32),
 }
 
@@ -28,7 +30,7 @@ pub(crate) struct Tokenizer<'a> {
 
 impl<'a> Tokenizer<'a> {
     /// トークナイザの初期化。
-    /// 
+    ///
     /// * `input` - トークナイズする入力。
     pub(crate) fn new(input: &str) -> Tokenizer {
         return Tokenizer {
@@ -49,13 +51,17 @@ impl<'a> Tokenizer<'a> {
         loop {
             match self.input[self.pos..].chars().next() {
                 Some(c) if c.is_ascii_digit() => {
-                    if is_first { is_first = false; }
+                    if is_first {
+                        is_first = false;
+                    }
                     n = n * 10 + (c as u8 - b'0') as u32;
                     self.pos += c.len_utf8();
                     self.index += 1;
                 }
                 _ => {
-                    if is_first { return None; }
+                    if is_first {
+                        return None;
+                    }
                     return Some(n);
                 }
             }
@@ -103,7 +109,9 @@ impl<'a> Tokenizer<'a> {
     fn starts_with_before_whitespace(&mut self, s: &str) -> bool {
         let result = self.input[self.pos..].starts_with(s);
 
-        if !result { return false; }
+        if !result {
+            return false;
+        }
 
         match self.input[self.pos + s.len()..].chars().next() {
             Some(c) if !c.is_ascii_whitespace() => return false,
@@ -129,7 +137,6 @@ impl<'a> Tokenizer<'a> {
         self.locals.iter().find(|e| e.name == name)
     }
 
-
     /// 変数名（予約文字でないもの）をパースする。
     /// その変数のオフセットを返す。
     pub(crate) fn parse_lvar(&mut self) -> Option<usize> {
@@ -137,7 +144,10 @@ impl<'a> Tokenizer<'a> {
 
         loop {
             // 予約文字が先頭になったら終了
-            if RESERVEDS.iter().any(|e| self.input[self.pos..].starts_with(e)) {
+            if RESERVEDS
+                .iter()
+                .any(|e| self.input[self.pos..].starts_with(e))
+            {
                 break;
             }
 
@@ -145,7 +155,9 @@ impl<'a> Tokenizer<'a> {
             match self.input[self.pos..].chars().next() {
                 None => break,
                 Some(c) => {
-                    if c.is_ascii_whitespace() { break; }
+                    if c.is_ascii_whitespace() {
+                        break;
+                    }
 
                     self.pos += c.len_utf8();
                     self.index += 1;
@@ -153,15 +165,14 @@ impl<'a> Tokenizer<'a> {
             }
         }
 
-        if first_pos == self.pos { return None; }
+        if first_pos == self.pos {
+            return None;
+        }
 
-        if let Some(lvar)
-            = self.find_lvar(&self.input[first_pos..self.pos])
-        {
+        if let Some(lvar) = self.find_lvar(&self.input[first_pos..self.pos]) {
             return Some(lvar.offset);
         } else {
-            let lvar = LVar::new(&self.input[first_pos..self.pos],
-                                           (self.num_lvar() + 1) * 8);
+            let lvar = LVar::new(&self.input[first_pos..self.pos], (self.num_lvar() + 1) * 8);
             let offset = lvar.offset;
             self.locals.push(lvar);
             return Some(offset);
@@ -174,7 +185,7 @@ impl<'a> Tokenizer<'a> {
     }
 
     /// エラーメッセージを出す。
-    /// 
+    ///
     /// * `message` - 出力するメッセージ
     pub(crate) fn error(&self, message: &str) -> ! {
         eprintln!("{}", self.input);
@@ -216,8 +227,6 @@ impl<'a> Iterator for Tokenizer<'a> {
         if let Some(num) = self.parse_number() {
             return Some(Token::Number(num));
         }
-
-        
 
         if let Some(reserved) = RESERVEDS.iter().find(|e| self.cmp(&e)) {
             Some(Token::Reserved(reserved))

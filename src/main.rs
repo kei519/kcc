@@ -1,10 +1,10 @@
-mod parse;
 mod codegen;
+mod parse;
 
+use crate::codegen::*;
+use crate::parse::*;
 use std::env;
 use std::process::exit;
-use crate::parse::*;
-use crate::codegen::*;
 
 fn main() {
     // 引数を取得
@@ -23,7 +23,7 @@ fn main() {
     println!(".global main");
     println!("main:");
 
-	// ツリーを生成する。
+    // ツリーを生成する。
     let trees = program(&mut tokenizer);
 
     // プロローグ

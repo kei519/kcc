@@ -19,7 +19,12 @@ assert() {
 	fi
 }
 
+# one number test
 assert 0 0
 assert 42 42
+
+# add / sub test
+assert 21 "5+20-4"
+assert 0 "100-32+10-78"
 
 echo OK

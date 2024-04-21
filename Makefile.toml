@@ -1,0 +1,21 @@
+[config]
+skip_core_tasks = true
+
+[tasks.default]
+dependencies = ["build"]
+
+[tasks.build]
+command = "cargo"
+args = ["build", "--release"]
+
+[tasks.test]
+dependencies = ["build"]
+script = '''
+./test/test.sh
+'''
+
+[tasks.clean]
+script = '''
+cargo clean
+rm -f ./test/tmp*
+'''

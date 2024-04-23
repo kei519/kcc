@@ -48,39 +48,6 @@ fn parse(input: &str) -> Result<Node> {
     parser.expr()
 }
 
-/// Reads a token when it is the expected char,
-/// otherwise returns an error.
-fn expect(token: &Token, op: char) -> Result<()> {
-    match token.value {
-        TokenKind::Reserved(kw) if op == kw.chars().next().unwrap() => Ok(()),
-        _ => Err(Error {
-            value: ErrorKind::Error(format!("not '{}'", op).leak()),
-            loc: token.loc,
-        }),
-    }
-}
-
-/// Reads a token when it is a number,
-/// otherwise returns an error.
-fn expect_number(token: &Token) -> Result<u64> {
-    match token.value {
-        TokenKind::Num(n) => Ok(n),
-        _ => Err(Error {
-            value: ErrorKind::Error("not a number"),
-            loc: token.loc,
-        }),
-    }
-}
-
-/// Read a token when it is the expected char and returns true,
-/// otherwise returns false.
-fn consume(token: &Token, op: char) -> bool {
-    match token.value {
-        TokenKind::Reserved(kw) if kw.chars().next().unwrap() == op => true,
-        _ => false,
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 /// Represents all errros.
 enum ErrorKind {
@@ -366,18 +333,62 @@ impl Parser {
         }
     }
 
+    /// Skip one token.
+    fn skip(&mut self) {
+        self.pos += 1
+    }
+
+    /// Reads a token when it is the expected char,
+    /// otherwise returns an error.
+    fn expect(&mut self, op: char) -> Result<()> {
+        match self.tok().value {
+            TokenKind::Reserved(kw) if op == kw.chars().next().unwrap() => {
+                self.skip();
+                Ok(())
+            }
+            _ => Err(Error {
+                value: ErrorKind::Error(format!("not '{}'", op).leak()),
+                loc: self.tok().loc,
+            }),
+        }
+    }
+
+    /// Reads a token when it is a number,
+    /// otherwise returns an error.
+    fn expect_number(&mut self) -> Result<u64> {
+        match self.tok().value {
+            TokenKind::Num(n) => {
+                self.skip();
+                Ok(n)
+            }
+            _ => Err(Error {
+                value: ErrorKind::Error("not a number"),
+                loc: self.tok().loc,
+            }),
+        }
+    }
+
+    /// Read a token when it is the expected char and returns true,
+    /// otherwise returns false.
+    fn consume(&mut self, op: char) -> bool {
+        match self.tok().value {
+            TokenKind::Reserved(kw) if kw.chars().next().unwrap() == op => {
+                self.skip();
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// primary = num | "(" expr ")"
     fn primary(&mut self) -> Result<Node> {
         let tok_loc = self.tok().loc;
-        if consume(self.tok(), '(') {
-            self.pos += 1;
+        if self.consume('(') {
             let ret = self.expr()?;
-            expect(self.tok(), ')')?;
-            self.pos += 1;
+            self.expect(')')?;
             Ok(ret)
         } else {
-            let ret = Node::with_num(expect_number(self.tok())?, tok_loc);
-            self.pos += 1;
+            let ret = Node::with_num(self.expect_number()?, tok_loc);
             Ok(ret)
         }
     }
@@ -386,11 +397,9 @@ impl Parser {
     fn unary(&mut self) -> Result<Node> {
         // FIXME: Two operators, "+" and "-", are not binary operator.
         // So the loc of this function return value is NOT correct.
-        if consume(&self.tok(), '+') {
-            self.pos += 1;
+        if self.consume('+') {
             Ok(self.primary()?)
-        } else if consume(self.tok(), '-') {
-            self.pos += 1;
+        } else if self.consume('-') {
             let img_pos = Loc { start: 0, end: 0 };
             Ok(Node::with_binop(
                 BinOp::new(BinOpKind::Sub, img_pos),
@@ -408,11 +417,9 @@ impl Parser {
 
         loop {
             let tok_loc = self.tok().loc;
-            if consume(self.tok(), '*') {
-                self.pos += 1;
+            if self.consume('*') {
                 ret = Node::with_binop(BinOp::new(BinOpKind::Mul, tok_loc), ret, self.unary()?);
-            } else if consume(self.tok(), '/') {
-                self.pos += 1;
+            } else if self.consume('/') {
                 ret = Node::with_binop(BinOp::new(BinOpKind::Div, tok_loc), ret, self.unary()?);
             } else {
                 return Ok(ret);
@@ -426,11 +433,9 @@ impl Parser {
 
         loop {
             let tok_loc = self.tok().loc;
-            if consume(self.tok(), '+') {
-                self.pos += 1;
+            if self.consume('+') {
                 ret = Node::with_binop(BinOp::new(BinOpKind::Add, tok_loc), ret, self.mul()?);
-            } else if consume(self.tok(), '-') {
-                self.pos += 1;
+            } else if self.consume('-') {
                 ret = Node::with_binop(BinOp::new(BinOpKind::Sub, tok_loc), ret, self.mul()?);
             } else {
                 return Ok(ret);

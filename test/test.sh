@@ -42,4 +42,23 @@ assert 15 "(3 + 2) * ( 4 - 1)"
 assert 33 "-12 + 45"
 assert 18 "-2 * -9"
 assert 24 "(-4 + +1) * -(+5 - -3)"
+
+# relational operators test
+assert 1 "0 == 0"
+assert 0 "0 == 1"
+assert 1 "0 != 1"
+assert 0 "0 != 0"
+assert 1 "0 < 1"
+assert 0 "0 > 1"
+assert 1 "0 <= 0"
+assert 0 "0 > 0"
+assert 1 "0 <= 1"
+assert 0 "0 > 1"
+assert 1 "1 >= 0"
+assert 0 "1 < 0"
+assert 1 "0 >= 0"
+assert 0 "0 < 0"
+assert 1 "91 - 10 == 9 * 9"
+assert 101 "(32 < 54) + 100"
+
 echo OK

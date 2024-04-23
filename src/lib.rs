@@ -102,7 +102,7 @@ struct Annot<T> {
 /// The value and the kind.
 enum TokenKind {
     /// Signature.
-    Reserved(&'static str),
+    Reserved(&'static [u8]),
     /// Digit token.
     Num(u64),
     /// HACK: I don't think Eof is needed in Rust program...
@@ -112,7 +112,7 @@ enum TokenKind {
 type Token = Annot<TokenKind>;
 
 impl Token {
-    fn with_reserved(kw: &'static str, pos: usize) -> Self {
+    fn with_reserved(kw: &'static [u8], pos: usize) -> Self {
         Self {
             value: TokenKind::Reserved(kw),
             loc: Loc {
@@ -150,23 +150,29 @@ impl<'a> Tokenizer<'a> {
     /// Tokenizes the input and returns the vector of the tokens.
     /// When fails, return an error.
     fn tokenize(&mut self) -> Result<Vec<Token>> {
+        const KW: [&'static [u8]; 12] = [
+            b"==", b"!=", b"<=", b">=", b">", b"<", b"+", b"-", b"*", b"/", b"(", b")",
+        ];
+
         let mut tokens = vec![];
 
-        while self.pos < self.input.len() {
-            let now = self.input[self.pos];
+        'l: while self.pos < self.input.len() {
             // skip a whitespace
-            if now.is_ascii_whitespace() {
+            if self.input[self.pos].is_ascii_whitespace() {
                 self.pos += 1;
                 continue;
             }
 
-            match now {
-                b'+' | b'-' | b'*' | b'/' | b'(' | b')' => {
-                    // This cast always succeeds because of checking.
-                    let kw = (now as char).to_string().leak();
+            let input_slice = &self.input[self.pos..];
+            for kw in KW {
+                if input_slice.starts_with(kw) {
                     tokens.push(Token::with_reserved(kw, self.pos));
-                    self.pos += 1;
+                    self.pos += kw.len();
+                    continue 'l;
                 }
+            }
+
+            match input_slice[0] {
                 b'0'..=b'9' => {
                     let start = self.pos;
                     tokens.push(Token::with_num(self.str_to_num()?, start, self.pos));
@@ -225,6 +231,14 @@ enum BinOpKind {
     Mul,
     /// /
     Div,
+    /// ==
+    Eq,
+    /// !=
+    Ne,
+    /// <
+    Lt,
+    /// <=
+    Le,
 }
 
 type BinOp = Annot<BinOpKind>;
@@ -298,6 +312,26 @@ impl Node {
                         println!("  cqo");
                         println!("  idiv rdi");
                     }
+                    BinOpKind::Eq => {
+                        println!("  cmp rax, rdi");
+                        println!("  sete al");
+                        println!("  movzb rax, al");
+                    }
+                    BinOpKind::Ne => {
+                        println!("  cmp rax, rdi");
+                        println!("  setne al");
+                        println!("  movzb rax, al");
+                    }
+                    BinOpKind::Lt => {
+                        println!("  cmp rax, rdi");
+                        println!("  setl al");
+                        println!("  movzb rax, al");
+                    }
+                    BinOpKind::Le => {
+                        println!("  cmp rax, rdi");
+                        println!("  setle al");
+                        println!("  movzb rax, al");
+                    }
                 }
 
                 println!("  push rax");
@@ -340,14 +374,14 @@ impl Parser {
 
     /// Reads a token when it is the expected char,
     /// otherwise returns an error.
-    fn expect(&mut self, op: char) -> Result<()> {
+    fn expect(&mut self, op: &[u8]) -> Result<()> {
         match self.tok().value {
-            TokenKind::Reserved(kw) if op == kw.chars().next().unwrap() => {
+            TokenKind::Reserved(kw) if op == kw => {
                 self.skip();
                 Ok(())
             }
             _ => Err(Error {
-                value: ErrorKind::Error(format!("not '{}'", op).leak()),
+                value: ErrorKind::Error(format!("not '{}'", from_utf8(op).unwrap()).leak()),
                 loc: self.tok().loc,
             }),
         }
@@ -370,9 +404,9 @@ impl Parser {
 
     /// Read a token when it is the expected char and returns true,
     /// otherwise returns false.
-    fn consume(&mut self, op: char) -> bool {
+    fn consume(&mut self, op: &[u8]) -> bool {
         match self.tok().value {
-            TokenKind::Reserved(kw) if kw.chars().next().unwrap() == op => {
+            TokenKind::Reserved(kw) if kw == op => {
                 self.skip();
                 true
             }
@@ -383,9 +417,9 @@ impl Parser {
     /// primary = num | "(" expr ")"
     fn primary(&mut self) -> Result<Node> {
         let tok_loc = self.tok().loc;
-        if self.consume('(') {
+        if self.consume(b"(") {
             let ret = self.expr()?;
-            self.expect(')')?;
+            self.expect(b")")?;
             Ok(ret)
         } else {
             let ret = Node::with_num(self.expect_number()?, tok_loc);
@@ -397,9 +431,9 @@ impl Parser {
     fn unary(&mut self) -> Result<Node> {
         // FIXME: Two operators, "+" and "-", are not binary operator.
         // So the loc of this function return value is NOT correct.
-        if self.consume('+') {
+        if self.consume(b"+") {
             Ok(self.primary()?)
-        } else if self.consume('-') {
+        } else if self.consume(b"-") {
             let img_pos = Loc { start: 0, end: 0 };
             Ok(Node::with_binop(
                 BinOp::new(BinOpKind::Sub, img_pos),
@@ -417,9 +451,9 @@ impl Parser {
 
         loop {
             let tok_loc = self.tok().loc;
-            if self.consume('*') {
+            if self.consume(b"*") {
                 ret = Node::with_binop(BinOp::new(BinOpKind::Mul, tok_loc), ret, self.unary()?);
-            } else if self.consume('/') {
+            } else if self.consume(b"/") {
                 ret = Node::with_binop(BinOp::new(BinOpKind::Div, tok_loc), ret, self.unary()?);
             } else {
                 return Ok(ret);
@@ -427,19 +461,62 @@ impl Parser {
         }
     }
 
-    /// expr = mul ( "+" mul | "-" mul)*
-    fn expr(&mut self) -> Result<Node> {
+    /// add = mul ( "+" mul | "-" mul)*
+    fn add(&mut self) -> Result<Node> {
         let mut ret = self.mul()?;
 
         loop {
             let tok_loc = self.tok().loc;
-            if self.consume('+') {
+            if self.consume(b"+") {
                 ret = Node::with_binop(BinOp::new(BinOpKind::Add, tok_loc), ret, self.mul()?);
-            } else if self.consume('-') {
+            } else if self.consume(b"-") {
                 ret = Node::with_binop(BinOp::new(BinOpKind::Sub, tok_loc), ret, self.mul()?);
             } else {
                 return Ok(ret);
             }
         }
+    }
+
+    /// relational = add ( "<" add | "<=" add | ">" add | ">=" add )*
+    fn relational(&mut self) -> Result<Node> {
+        let mut ret = self.add()?;
+
+        loop {
+            let tok_loc = self.tok().loc;
+            if self.consume(b"<") {
+                ret = Node::with_binop(BinOp::new(BinOpKind::Lt, tok_loc), ret, self.add()?);
+            } else if self.consume(b"<=") {
+                ret = Node::with_binop(BinOp::new(BinOpKind::Le, tok_loc), ret, self.add()?);
+            } else if self.consume(b">") {
+                // FIXME: This loc infos are not correct.
+                ret = Node::with_binop(BinOp::new(BinOpKind::Lt, tok_loc), self.add()?, ret);
+            } else if self.consume(b">=") {
+                // FIXME: So are this ones
+                ret = Node::with_binop(BinOp::new(BinOpKind::Le, tok_loc), self.add()?, ret);
+            } else {
+                return Ok(ret);
+            }
+        }
+    }
+
+    /// equality = relational ( "==" relational | "!=" relational)*
+    fn equality(&mut self) -> Result<Node> {
+        let mut ret = self.relational()?;
+
+        loop {
+            let tok_loc = self.tok().loc;
+            if self.consume(b"==") {
+                ret = Node::with_binop(BinOp::new(BinOpKind::Eq, tok_loc), ret, self.relational()?);
+            } else if self.consume(b"!=") {
+                ret = Node::with_binop(BinOp::new(BinOpKind::Ne, tok_loc), ret, self.relational()?);
+            } else {
+                return Ok(ret);
+            }
+        }
+    }
+
+    /// expr = equality
+    fn expr(&mut self) -> Result<Node> {
+        self.equality()
     }
 }

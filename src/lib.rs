@@ -24,50 +24,28 @@ pub fn main(args: Vec<String>) -> u8 {
     let input = args[1].as_str();
 
     // catch any error
-    match parse(input) {
+    let node = match parse(input) {
         Err(e) => {
             e.show(input);
             return 1;
         }
-        _ => (),
-    }
+        Ok(n) => n,
+    };
+    node.gen();
 
     // return code
+    println!("  pop rax");
     println!("  ret");
 
     0
 }
 
 /// called by main to catch any error in one place
-fn parse(input: &str) -> Result<()> {
+fn parse(input: &str) -> Result<Node> {
     let tokens = Tokenizer::new(input).tokenize()?;
+    let mut parser = Parser::new(tokens);
 
-    let mut pos = 0;
-
-    println!("  mov rax, {}", expect_number(&tokens[pos])?);
-    pos += 1;
-
-    while pos < tokens.len() {
-        // HACK: I don't think Eof is needed in Rust program.
-        if let TokenKind::Eof = tokens[pos].value {
-            break;
-        }
-
-        if consume(&tokens[pos], '+') {
-            pos += 1;
-            // FIXME: This implemntation is not good
-            println!("  add rax, {}", expect_number(&tokens[pos])?);
-            pos += 1;
-            continue;
-        }
-
-        expect(&tokens[pos], '-')?;
-        pos += 1;
-        println!("  sub rax, {}", expect_number(&tokens[pos])?);
-        pos += 1;
-    }
-
-    Ok(())
+    parser.expr()
 }
 
 /// Reads a token when it is the expected char,
@@ -87,13 +65,10 @@ fn expect(token: &Token, op: char) -> Result<()> {
 fn expect_number(token: &Token) -> Result<u64> {
     match token.value {
         TokenKind::Num(n) => Ok(n),
-        _ => {
-            eprintln!();
-            Err(Error {
-                value: ErrorKind::Error("not a number"),
-                loc: token.loc,
-            })
-        }
+        _ => Err(Error {
+            value: ErrorKind::Error("not a number"),
+            loc: token.loc,
+        }),
     }
 }
 
@@ -133,6 +108,18 @@ struct Loc {
     end: usize,
 }
 
+impl Loc {
+    /// Merges two Locations.
+    fn merge(&self, other: &Loc) -> Loc {
+        use std::cmp::{max, min};
+
+        Loc {
+            start: min(self.start, other.start),
+            end: max(self.end, other.end),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 /// Wraps any type with information.
 ///
@@ -151,8 +138,7 @@ enum TokenKind {
     Reserved(&'static str),
     /// Digit token.
     Num(u64),
-    /// EOF.
-    // #HACK: I don't want to use Eof.
+    /// HACK: I don't think Eof is needed in Rust program...
     Eof,
 }
 
@@ -173,16 +159,6 @@ impl Token {
         Self {
             value: TokenKind::Num(num),
             loc: Loc { start, end },
-        }
-    }
-
-    fn with_eof(input: &[u8]) -> Self {
-        Self {
-            value: TokenKind::Eof,
-            loc: Loc {
-                start: input.len(),
-                end: input.len() + 1,
-            },
         }
     }
 }
@@ -218,7 +194,7 @@ impl<'a> Tokenizer<'a> {
             }
 
             match now {
-                b'+' | b'-' => {
+                b'+' | b'-' | b'*' | b'/' | b'(' | b')' => {
                     // This cast always succeeds because of checking.
                     let kw = (now as char).to_string().leak();
                     tokens.push(Token::with_reserved(kw, self.pos));
@@ -239,7 +215,6 @@ impl<'a> Tokenizer<'a> {
                 }
             }
         }
-        tokens.push(Token::with_eof(self.input));
 
         Ok(tokens)
     }
@@ -268,6 +243,202 @@ impl<'a> Tokenizer<'a> {
                 // So does this!
                 .unwrap();
             Ok(n)
+        }
+    }
+}
+
+/// Respresents binary operators.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum BinOpKind {
+    /// +
+    Add,
+    /// -
+    Sub,
+    /// *
+    Mul,
+    /// /
+    Div,
+}
+
+type BinOp = Annot<BinOpKind>;
+
+impl BinOp {
+    /// Constructor.
+    fn new(op: BinOpKind, loc: Loc) -> Self {
+        Self { value: op, loc }
+    }
+}
+
+/// Represents a node of the AST.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum NodeKind {
+    /// Integer
+    Num(u64),
+    /// Binary operator.
+    BinOp {
+        /// Operator type.
+        op: BinOp,
+        /// Left side of the operator.
+        left: Box<Node>,
+        /// Right side of the operator.
+        right: Box<Node>,
+    },
+}
+
+type Node = Annot<NodeKind>;
+
+impl Node {
+    fn with_num(num: u64, loc: Loc) -> Self {
+        Self {
+            value: NodeKind::Num(num),
+            loc,
+        }
+    }
+
+    fn with_binop(op: BinOp, left: Node, right: Node) -> Self {
+        let loc = left.loc.merge(&op.loc).merge(&right.loc);
+        Self {
+            value: NodeKind::BinOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            },
+            loc,
+        }
+    }
+
+    /// Generates the assembly code from a top node.
+    fn gen(&self) {
+        match &self.value {
+            // When the node is a number, it is a terminal.
+            NodeKind::Num(val) => {
+                println!("  push {}", val);
+                return;
+            }
+            NodeKind::BinOp { op, left, right } => {
+                // When the node is a binary operator, it has left and right side.
+                left.gen();
+                right.gen();
+
+                println!("  pop rdi");
+                println!("  pop rax");
+
+                match op.value {
+                    BinOpKind::Add => println!("  add rax, rdi"),
+                    BinOpKind::Sub => println!("  sub rax, rdi"),
+                    BinOpKind::Mul => println!("  imul rax, rdi"),
+                    BinOpKind::Div => {
+                        println!("  cqo");
+                        println!("  idiv rdi");
+                    }
+                }
+
+                println!("  push rax");
+            }
+        }
+    }
+}
+
+struct Parser {
+    tokens: Vec<Token>,
+    pos: usize,
+}
+
+impl Parser {
+    /// Constructor.
+    fn new(tokens: Vec<Token>) -> Self {
+        Self { tokens, pos: 0 }
+    }
+
+    /// The shared reference of the current token.
+    fn tok(&self) -> &Token {
+        if self.pos >= self.tokens.len() {
+            let eof_pos = self.tokens[self.tokens.len() - 1].loc.end;
+            Box::leak(Box::new(Token {
+                value: TokenKind::Eof,
+                loc: Loc {
+                    start: eof_pos,
+                    end: eof_pos + 1,
+                },
+            }))
+        } else {
+            &self.tokens[self.pos]
+        }
+    }
+
+    /// primary = num | "(" expr ")"
+    fn primary(&mut self) -> Result<Node> {
+        let tok_loc = self.tok().loc;
+        if consume(self.tok(), '(') {
+            self.pos += 1;
+            let ret = self.expr()?;
+            expect(self.tok(), ')')?;
+            self.pos += 1;
+            Ok(ret)
+        } else {
+            let ret = Node::with_num(expect_number(self.tok())?, tok_loc);
+            self.pos += 1;
+            Ok(ret)
+        }
+    }
+
+<<<<<<< HEAD
+    /// mul = primary ( "*" primary | "/" primary )*
+=======
+    /// unary = ( "+" | "-" )? primary
+    fn unary(&mut self) -> Result<Node> {
+        // FIXME: Two operators, "+" and "-", are not binary operator.
+        // So the loc of this function return value is NOT correct.
+        if consume(&self.tok(), '+') {
+            self.pos += 1;
+            Ok(self.primary()?)
+        } else if consume(self.tok(), '-') {
+            self.pos += 1;
+            let img_pos = Loc { start: 0, end: 0 };
+            Ok(Node::with_binop(
+                BinOp::new(BinOpKind::Sub, img_pos),
+                Node::with_num(0, img_pos),
+                self.primary()?,
+            ))
+        } else {
+            Ok(self.primary()?)
+        }
+    }
+
+    /// mul = unary ( "*" unary | "/" unary)*
+>>>>>>> 04375b7 (Add unary operatos + and -)
+    fn mul(&mut self) -> Result<Node> {
+        let mut ret = self.unary()?;
+
+        loop {
+            let tok_loc = self.tok().loc;
+            if consume(self.tok(), '*') {
+                self.pos += 1;
+                ret = Node::with_binop(BinOp::new(BinOpKind::Mul, tok_loc), ret, self.unary()?);
+            } else if consume(self.tok(), '/') {
+                self.pos += 1;
+                ret = Node::with_binop(BinOp::new(BinOpKind::Div, tok_loc), ret, self.unary()?);
+            } else {
+                return Ok(ret);
+            }
+        }
+    }
+
+    /// expr = mul ( "+" mul | "-" mul)*
+    fn expr(&mut self) -> Result<Node> {
+        let mut ret = self.mul()?;
+
+        loop {
+            let tok_loc = self.tok().loc;
+            if consume(self.tok(), '+') {
+                self.pos += 1;
+                ret = Node::with_binop(BinOp::new(BinOpKind::Add, tok_loc), ret, self.mul()?);
+            } else if consume(self.tok(), '-') {
+                self.pos += 1;
+                ret = Node::with_binop(BinOp::new(BinOpKind::Sub, tok_loc), ret, self.mul()?);
+            } else {
+                return Ok(ret);
+            }
         }
     }
 }

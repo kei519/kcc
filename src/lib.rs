@@ -382,9 +382,6 @@ impl Parser {
         }
     }
 
-<<<<<<< HEAD
-    /// mul = primary ( "*" primary | "/" primary )*
-=======
     /// unary = ( "+" | "-" )? primary
     fn unary(&mut self) -> Result<Node> {
         // FIXME: Two operators, "+" and "-", are not binary operator.
@@ -405,8 +402,7 @@ impl Parser {
         }
     }
 
-    /// mul = unary ( "*" unary | "/" unary)*
->>>>>>> 04375b7 (Add unary operatos + and -)
+    /// mul = primary ( "*" primary | "/" primary )*
     fn mul(&mut self) -> Result<Node> {
         let mut ret = self.unary()?;
 

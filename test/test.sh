@@ -41,5 +41,5 @@ assert 15 "(3 + 2) * ( 4 - 1)"
 # unary operators test
 assert 33 "-12 + 45"
 assert 18 "-2 * -9"
-assert 24 "(-4 + 1) * -(5 - -3)"
+assert 24 "(-4 + +1) * -(+5 - -3)"
 echo OK

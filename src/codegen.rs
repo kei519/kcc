@@ -29,6 +29,18 @@ fn gen(node: Node) {
             println!("  push {}", val);
             return;
         }
+        NodeKind::UnOp { op, arg } => {
+            gen(*arg);
+
+            println!("  pop rax");
+
+            match op.value {
+                UnOpKind::Pos => (),
+                UnOpKind::Neg => println!("  neg rax"),
+            }
+
+            println!("  push rax");
+        }
         NodeKind::BinOp { op, left, right } => {
             // When the node is a binary operator, it has left and right side.
             gen(*left);
@@ -63,6 +75,16 @@ fn gen(node: Node) {
                 BinOpKind::Le => {
                     println!("  cmp rax, rdi");
                     println!("  setle al");
+                    println!("  movzb rax, al");
+                }
+                BinOpKind::Gt => {
+                    println!("  cmp rax, rdi");
+                    println!("  setg al");
+                    println!("  movzb rax, al");
+                }
+                BinOpKind::Ge => {
+                    println!("  cmp rax, rdi");
+                    println!("  setge al");
                     println!("  movzb rax, al");
                 }
             }

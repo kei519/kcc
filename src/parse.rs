@@ -1,6 +1,23 @@
 use crate::tokenize::*;
 use crate::*;
 
+/// Represents unary operators.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UnOpKind {
+    /// +
+    Pos,
+    /// -
+    Neg,
+}
+
+pub type UnOp = Annot<UnOpKind>;
+
+impl UnOp {
+    pub fn new(op: UnOpKind, loc: Loc) -> Self {
+        Self { value: op, loc }
+    }
+}
+
 /// Respresents binary operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BinOpKind {
@@ -20,6 +37,10 @@ pub enum BinOpKind {
     Lt,
     /// <=
     Le,
+    /// >
+    Gt,
+    /// >=
+    Ge,
 }
 
 type BinOp = Annot<BinOpKind>;
@@ -36,6 +57,13 @@ impl BinOp {
 pub enum NodeKind {
     /// Integer
     Num(u64),
+    /// Unary operator.
+    UnOp {
+        /// Operator type.
+        op: UnOp,
+        /// Operand.
+        arg: Box<Node>,
+    },
     /// Binary operator.
     BinOp {
         /// Operator type.
@@ -53,6 +81,17 @@ impl Node {
     pub fn with_num(num: u64, loc: Loc) -> Self {
         Self {
             value: NodeKind::Num(num),
+            loc,
+        }
+    }
+
+    pub fn with_unop(op: UnOp, arg: Node) -> Self {
+        let loc = op.loc.merge(&arg.loc);
+        Self {
+            value: NodeKind::UnOp {
+                op: op,
+                arg: Box::new(arg),
+            },
             loc,
         }
     }
@@ -161,20 +200,15 @@ impl Parser {
 
     /// unary = ( "+" | "-" )? primary
     pub fn unary(&mut self) -> Result<Node> {
-        // FIXME: Two operators, "+" and "-", are not binary operator.
-        // So the loc of this function return value is NOT correct.
-        if self.consume(b"+") {
-            Ok(self.primary()?)
+        let tok_loc = self.tok().loc;
+        let node = if self.consume(b"+") {
+            Node::with_unop(UnOp::new(UnOpKind::Pos, tok_loc), self.primary()?)
         } else if self.consume(b"-") {
-            let img_pos = Loc { start: 0, end: 0 };
-            Ok(Node::with_binop(
-                BinOp::new(BinOpKind::Sub, img_pos),
-                Node::with_num(0, img_pos),
-                self.primary()?,
-            ))
+            Node::with_unop(UnOp::new(UnOpKind::Neg, tok_loc), self.primary()?)
         } else {
-            Ok(self.primary()?)
-        }
+            self.primary()?
+        };
+        Ok(node)
     }
 
     /// mul = unary ( "*" unary | "/" unary)*
@@ -220,11 +254,9 @@ impl Parser {
             } else if self.consume(b"<=") {
                 ret = Node::with_binop(BinOp::new(BinOpKind::Le, tok_loc), ret, self.add()?);
             } else if self.consume(b">") {
-                // FIXME: This loc infos are not correct.
-                ret = Node::with_binop(BinOp::new(BinOpKind::Lt, tok_loc), self.add()?, ret);
+                ret = Node::with_binop(BinOp::new(BinOpKind::Gt, tok_loc), ret, self.add()?);
             } else if self.consume(b">=") {
-                // FIXME: So are this ones
-                ret = Node::with_binop(BinOp::new(BinOpKind::Le, tok_loc), self.add()?, ret);
+                ret = Node::with_binop(BinOp::new(BinOpKind::Ge, tok_loc), ret, self.add()?);
             } else {
                 return Ok(ret);
             }

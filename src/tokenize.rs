@@ -54,8 +54,8 @@ impl<'a> Tokenizer<'a> {
     /// Tokenizes the input and returns the vector of the tokens.
     /// When fails, return an error.
     pub fn tokenize(&mut self) -> Result<Vec<Token>> {
-        const KW: [&'static [u8]; 12] = [
-            b"==", b"!=", b"<=", b">=", b">", b"<", b"+", b"-", b"*", b"/", b"(", b")",
+        const KW: [&'static [u8]; 13] = [
+            b"==", b"!=", b"<=", b">=", b">", b"<", b"+", b"-", b"*", b"/", b"(", b")", b";",
         ];
 
         let mut tokens = vec![];

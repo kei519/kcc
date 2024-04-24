@@ -283,4 +283,19 @@ impl Parser {
     pub fn expr(&mut self) -> Result<Node> {
         self.equality()
     }
+
+    /// stmt = expr ";"
+    pub fn stmt(&mut self) -> Result<Node> {
+        let ret = self.expr()?;
+        self.expect(b";")?;
+        Ok(ret)
+    }
+
+    pub fn program(&mut self) -> Result<Vec<Node>> {
+        let mut nodes = vec![];
+        while self.tok().value != TokenKind::Eof {
+            nodes.push(self.stmt()?);
+        }
+        Ok(nodes)
+    }
 }

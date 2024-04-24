@@ -10,11 +10,13 @@ pub fn codegen(input: &str) -> Result<()> {
     println!(".global main");
     println!("main:");
 
-    let node = parser.expr()?;
-    gen(node);
+    let nodes = parser.program()?;
+    for node in nodes {
+        gen(node);
+        println!("  pop rax")
+    }
 
     // return code
-    println!("  pop rax");
     println!("  ret");
 
     Ok(())

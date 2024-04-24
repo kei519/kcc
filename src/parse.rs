@@ -8,6 +8,8 @@ pub enum UnOpKind {
     Pos,
     /// -
     Neg,
+    /// expr
+    ExprStmt,
 }
 
 pub type UnOp = Annot<UnOpKind>;
@@ -305,7 +307,10 @@ impl Parser {
                 self.skip();
                 Node::with_return(self.expr()?, ret_loc)
             }
-            _ => self.expr()?,
+            _ => {
+                let expr = self.expr()?;
+                Node::with_unop(UnOp::new(UnOpKind::ExprStmt, expr.loc), expr)
+            }
         };
         self.expect(b";")?;
         Ok(ret)

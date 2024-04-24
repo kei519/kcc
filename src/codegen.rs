@@ -13,7 +13,6 @@ pub fn codegen(input: &str) -> Result<()> {
     let nodes = parser.program()?;
     for node in nodes {
         gen(node);
-        println!("  pop rax")
     }
 
     Ok(())
@@ -36,15 +35,17 @@ fn gen(node: Node) {
         }
         NodeKind::UnOp { op, arg } => {
             gen(*arg);
-
-            println!("  pop rax");
-
             match op.value {
                 UnOpKind::Pos => (),
-                UnOpKind::Neg => println!("  neg rax"),
+                UnOpKind::Neg => {
+                    println!("  pop rax");
+                    println!("  neg rax");
+                    println!("  push rax");
+                }
+                UnOpKind::ExprStmt => {
+                    println!("  add rsp, {}", usize::BITS >> 3);
+                }
             }
-
-            println!("  push rax");
         }
         NodeKind::BinOp { op, left, right } => {
             // When the node is a binary operator, it has left and right side.

@@ -7,6 +7,8 @@ use crate::*;
 pub enum TokenKind {
     /// Signature.
     Reserved(&'static [u8]),
+    /// Identifier
+    Ident(&'static str),
     /// Digit token.
     Num(u64),
     /// HACK: I don't think Eof is needed in Rust program...
@@ -26,6 +28,16 @@ impl Token {
         }
     }
 
+    pub fn with_ident(name: &'static str, pos: usize) -> Self {
+        Self {
+            value: TokenKind::Ident(name),
+            loc: Loc {
+                start: pos,
+                end: pos + name.len(),
+            },
+        }
+    }
+
     pub fn with_num(num: u64, start: usize, end: usize) -> Self {
         Self {
             value: TokenKind::Num(num),
@@ -35,16 +47,16 @@ impl Token {
 }
 
 #[derive(Debug)]
-pub struct Tokenizer<'a> {
+pub struct Tokenizer {
     /// The input as bytes string.
-    input: &'a [u8],
+    input: &'static [u8],
     /// reading position of [Self::input].
     pos: usize,
 }
 
-impl<'a> Tokenizer<'a> {
+impl Tokenizer {
     /// Constructor.
-    pub fn new(input: &'a str) -> Self {
+    pub fn new(input: &'static str) -> Self {
         Self {
             input: input.as_bytes(),
             pos: 0,
@@ -93,21 +105,22 @@ impl<'a> Tokenizer<'a> {
                 }
             }
 
-            match input_slice[0] {
-                b'0'..=b'9' => {
-                    let start = self.pos;
-                    tokens.push(Token::with_num(self.str_to_num()?, start, self.pos));
-                }
-                _ => {
-                    return Err(Error {
-                        value: ErrorKind::Error("cannot tokenize"),
-                        loc: Loc {
-                            start: self.pos,
-                            end: self.pos + 1,
-                        },
-                    })
-                }
+            if input_slice[0].is_ascii_digit() {
+                let start = self.pos;
+                // This conversion never fails because of checking.
+                tokens.push(Token::with_num(self.str_to_num().unwrap(), start, self.pos));
+                continue;
             }
+
+            // The token should be a identifer.
+            let start = self.pos;
+            while self.pos < self.input.len() && !self.input[self.pos].is_ascii_whitespace() {
+                self.pos += 1;
+            }
+            let name = std::str::from_utf8(&self.input[start..self.pos])
+                // This never failse because of construction.
+                .unwrap();
+            tokens.push(Token::with_ident(name, start));
         }
 
         Ok(tokens)

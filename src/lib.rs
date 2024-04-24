@@ -15,13 +15,14 @@ pub type Result<T> = StdResult<T, Error>;
 /// # Return
 ///
 /// Exit code.
-pub fn main(args: Vec<String>) -> u8 {
+pub fn main(mut args: Vec<String>) -> u8 {
     if args.len() != 2 {
         eprintln!("Only ONE argument is required.");
         return 1;
     }
 
-    let input = args[1].as_str();
+    // This unwrapping never fails becaouse of checking.
+    let input = args.pop().unwrap().leak();
 
     // catch any error
     match codegen::codegen(input) {

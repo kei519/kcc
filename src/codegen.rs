@@ -1,7 +1,7 @@
 use crate::*;
 
 /// Generates the assembly code form the AST top node.
-pub fn codegen(input: &str) -> Result<()> {
+pub fn codegen(input: &'static str) -> Result<()> {
     let tokens = Tokenizer::new(input).tokenize()?;
     let mut parser = Parser::new(tokens);
 

@@ -16,9 +16,6 @@ pub fn codegen(input: &str) -> Result<()> {
         println!("  pop rax")
     }
 
-    // return code
-    println!("  ret");
-
     Ok(())
 }
 
@@ -30,6 +27,12 @@ fn gen(node: Node) {
         NodeKind::Num(val) => {
             println!("  push {}", val);
             return;
+        }
+        NodeKind::Return { val } => {
+            gen(*val);
+
+            println!("  pop rax");
+            println!("  ret");
         }
         NodeKind::UnOp { op, arg } => {
             gen(*arg);

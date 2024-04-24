@@ -57,6 +57,11 @@ impl BinOp {
 pub enum NodeKind {
     /// Integer
     Num(u64),
+    /// "return"
+    Return {
+        /// returned value
+        val: Box<Node>,
+    },
     /// Unary operator.
     UnOp {
         /// Operator type.
@@ -81,6 +86,14 @@ impl Node {
     pub fn with_num(num: u64, loc: Loc) -> Self {
         Self {
             value: NodeKind::Num(num),
+            loc,
+        }
+    }
+
+    pub fn with_return(val: Node, ret_loc: Loc) -> Self {
+        let loc = ret_loc.merge(&val.loc);
+        Self {
+            value: NodeKind::Return { val: Box::new(val) },
             loc,
         }
     }
@@ -284,9 +297,16 @@ impl Parser {
         self.equality()
     }
 
-    /// stmt = expr ";"
+    /// stmt = ( "return" )? expr ";"
     pub fn stmt(&mut self) -> Result<Node> {
-        let ret = self.expr()?;
+        let ret = match self.tok().value {
+            TokenKind::Reserved(b"return") => {
+                let ret_loc = self.tok().loc;
+                self.skip();
+                Node::with_return(self.expr()?, ret_loc)
+            }
+            _ => self.expr()?,
+        };
         self.expect(b";")?;
         Ok(ret)
     }

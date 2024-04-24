@@ -54,6 +54,10 @@ impl<'a> Tokenizer<'a> {
     /// Tokenizes the input and returns the vector of the tokens.
     /// When fails, return an error.
     pub fn tokenize(&mut self) -> Result<Vec<Token>> {
+        /// Keywords that must be followded by white spaces.
+        const SEP_KW: [&'static [u8]; 1] = [b"return"];
+
+        /// Keywords other than above.
         const KW: [&'static [u8]; 13] = [
             b"==", b"!=", b"<=", b">=", b">", b"<", b"+", b"-", b"*", b"/", b"(", b")", b";",
         ];
@@ -68,6 +72,19 @@ impl<'a> Tokenizer<'a> {
             }
 
             let input_slice = &self.input[self.pos..];
+            for kw in SEP_KW {
+                if input_slice.starts_with(kw) {
+                    match self.input.get(self.pos + kw.len()) {
+                        Some(c) if !c.is_ascii_whitespace() => continue,
+                        _ => {
+                            tokens.push(Token::with_reserved(kw, self.pos));
+                            self.pos += kw.len();
+                            continue 'l;
+                        }
+                    }
+                }
+            }
+
             for kw in KW {
                 if input_slice.starts_with(kw) {
                     tokens.push(Token::with_reserved(kw, self.pos));

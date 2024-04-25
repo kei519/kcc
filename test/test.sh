@@ -70,5 +70,12 @@ assert 140 "return 140;"
 assert 10 "96 - -9; return (11 - 9) * 5;"
 assert 1 "74; return 74 - 73; return 12;"
 
+# variable test
+assert 49 "a = 49; return a; "
+assert 87 "hoge = 234; fuga = hoge - 87; return hoge - fuga;"
+assert 16 "i = j = 16; return i;"
+assert 16 "i = j = 16; return j;"
+assert 34 "return (i = (j = 34));"
+
 echo
 echo OK

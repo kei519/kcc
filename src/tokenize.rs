@@ -70,8 +70,8 @@ impl Tokenizer {
         const SEP_KW: [&'static [u8]; 1] = [b"return"];
 
         /// Keywords other than above.
-        const KW: [&'static [u8]; 13] = [
-            b"==", b"!=", b"<=", b">=", b">", b"<", b"+", b"-", b"*", b"/", b"(", b")", b";",
+        const KW: [&'static [u8]; 14] = [
+            b"==", b"!=", b"<=", b">=", b">", b"<", b"+", b"-", b"*", b"/", b"(", b")", b";", b"=",
         ];
 
         let mut tokens = vec![];
@@ -114,7 +114,10 @@ impl Tokenizer {
 
             // The token should be a identifer.
             let start = self.pos;
-            while self.pos < self.input.len() && !self.input[self.pos].is_ascii_whitespace() {
+            while self.pos < self.input.len()
+                && !self.input[self.pos].is_ascii_whitespace()
+                && (self.input[self.pos] == b'_' || !self.input[self.pos].is_ascii_punctuation())
+            {
                 self.pos += 1;
             }
             let name = std::str::from_utf8(&self.input[start..self.pos])

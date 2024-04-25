@@ -43,6 +43,8 @@ pub enum BinOpKind {
     Gt,
     /// >=
     Ge,
+    /// =
+    Assign,
 }
 
 type BinOp = Annot<BinOpKind>;
@@ -59,6 +61,13 @@ impl BinOp {
 pub enum NodeKind {
     /// Integer
     Num(u64),
+    /// Variable
+    Var {
+        /// the name of the variable
+        name: &'static str,
+        /// the offset of the variable from rbp
+        offset: usize,
+    },
     /// "return"
     Return {
         /// returned value
@@ -88,6 +97,13 @@ impl Node {
     pub fn with_num(num: u64, loc: Loc) -> Self {
         Self {
             value: NodeKind::Num(num),
+            loc,
+        }
+    }
+
+    pub fn with_var(name: &'static str, offset: usize, loc: Loc) -> Self {
+        Self {
+            value: NodeKind::Var { name, offset },
             loc,
         }
     }
@@ -127,12 +143,18 @@ impl Node {
 pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    /// holds variales names and the offsets of them
+    vars: Vec<&'static str>,
 }
 
 impl Parser {
     /// Constructor.
     pub fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, pos: 0 }
+        Self {
+            tokens,
+            pos: 0,
+            vars: vec![],
+        }
     }
 
     /// The shared reference of the current token.
@@ -149,6 +171,24 @@ impl Parser {
         } else {
             &self.tokens[self.pos]
         }
+    }
+
+    /// Adds a new variable and returns the offset.
+    pub fn add_var(&mut self, name: &'static str) -> usize {
+        self.vars.push(name);
+        Self::offset(self.vars.len() - 1)
+    }
+
+    /// Finds the same name variable and returns the offset.
+    pub fn find_var(&self, name: &'static str) -> Option<usize> {
+        self.vars
+            .iter()
+            .position(|&var| var == name)
+            .map(|i| Self::offset(i))
+    }
+
+    fn offset(index: usize) -> usize {
+        (index + 1) * MEMORY_SIZE
     }
 
     /// Skip one token.
@@ -200,12 +240,20 @@ impl Parser {
         }
     }
 
-    /// primary = num | "(" expr ")"
+    /// primary = num | ident | "(" expr ")"
     pub fn primary(&mut self) -> Result<Node> {
         let tok_loc = self.tok().loc;
         if self.consume(b"(") {
             let ret = self.expr()?;
             self.expect(b")")?;
+            Ok(ret)
+        } else if let TokenKind::Ident(name) = self.tok().value {
+            self.skip();
+            let offset = match self.find_var(name) {
+                Some(o) => o,
+                None => self.add_var(name),
+            };
+            let ret = Node::with_var(name, offset, tok_loc);
             Ok(ret)
         } else {
             let ret = Node::with_num(self.expect_number()?, tok_loc);
@@ -294,9 +342,19 @@ impl Parser {
         }
     }
 
-    /// expr = equality
+    /// assign = equality ( "=" assign )?
+    pub fn assign(&mut self) -> Result<Node> {
+        let mut ret = self.equality()?;
+        let eq_loc = self.tok().loc;
+        if self.consume(b"=") {
+            ret = Node::with_binop(BinOp::new(BinOpKind::Assign, eq_loc), ret, self.assign()?);
+        }
+        Ok(ret)
+    }
+
+    /// expr = assign
     pub fn expr(&mut self) -> Result<Node> {
-        self.equality()
+        self.assign()
     }
 
     /// stmt = ( "return" )? expr ";"
@@ -316,11 +374,17 @@ impl Parser {
         Ok(ret)
     }
 
+    /// program = stmt*
     pub fn program(&mut self) -> Result<Vec<Node>> {
         let mut nodes = vec![];
         while self.tok().value != TokenKind::Eof {
             nodes.push(self.stmt()?);
         }
         Ok(nodes)
+    }
+
+    /// Returns parse result, the nodes and the number of variables.
+    pub fn parse(&mut self) -> Result<(Vec<Node>, usize)> {
+        Ok((self.program()?, self.vars.len()))
     }
 }

@@ -8,6 +8,9 @@ use crate::tokenize::*;
 pub type StdResult<T, E> = std::result::Result<T, E>;
 pub type Result<T> = StdResult<T, Error>;
 
+/// The memory size of a running machine.
+const MEMORY_SIZE: usize = (usize::BITS >> 3) as usize;
+
 /// Executes the main logic.
 ///
 /// * args - command-line arguments
@@ -30,7 +33,7 @@ pub fn main(mut args: Vec<String>) -> u8 {
             e.show(input);
             return 1;
         }
-        _ => (),
+        _ => {}
     };
 
     0

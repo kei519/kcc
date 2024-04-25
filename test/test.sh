@@ -77,5 +77,11 @@ assert 16 "i = j = 16; return i;"
 assert 16 "i = j = 16; return j;"
 assert 34 "return (i = (j = 34));"
 
+# while test
+assert 10 "a = 0; while (a < 10) a = a + 1; return a;"
+assert 16 "while (1) return 16; return 94;"
+assert 2 "while (0) return 248; return 2;"
+assert 48 "a = 0; while (a < 1) while (a < 48) a = a + 1; return a;"
+
 echo
 echo OK

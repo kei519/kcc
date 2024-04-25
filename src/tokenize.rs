@@ -1,5 +1,13 @@
 use crate::*;
 
+/// Checks the character is one of the separators in C.
+pub fn is_separator(c: u8) -> bool {
+    match c {
+        b'(' | b')' | b'[' | b']' | b'{' | b'}' | b';' | b',' | b'.' | b':' => true,
+        _ => false,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 /// Represents a token.
 ///
@@ -67,7 +75,10 @@ impl Tokenizer {
     /// When fails, return an error.
     pub fn tokenize(&mut self) -> Result<Vec<Token>> {
         /// Keywords that must be followded by white spaces.
-        const SEP_KW: [&'static [u8]; 1] = [b"return"];
+        const SP_KW: [&'static [u8]; 1] = [b"return"];
+
+        /// Keywords that must be followed by separators or white spaces.
+        const SEP_KW: [&'static [u8]; 4] = [b"while", b"else", b"for", b"if"];
 
         /// Keywords other than above.
         const KW: [&'static [u8]; 14] = [
@@ -84,10 +95,23 @@ impl Tokenizer {
             }
 
             let input_slice = &self.input[self.pos..];
-            for kw in SEP_KW {
+            for kw in SP_KW {
                 if input_slice.starts_with(kw) {
                     match self.input.get(self.pos + kw.len()) {
                         Some(c) if !c.is_ascii_whitespace() => continue,
+                        _ => {
+                            tokens.push(Token::with_reserved(kw, self.pos));
+                            self.pos += kw.len();
+                            continue 'l;
+                        }
+                    }
+                }
+            }
+
+            for kw in SEP_KW {
+                if input_slice.starts_with(kw) {
+                    match self.input.get(self.pos + kw.len()) {
+                        Some(&c) if !c.is_ascii_whitespace() && !is_separator(c) => continue,
                         _ => {
                             tokens.push(Token::with_reserved(kw, self.pos));
                             self.pos += kw.len();

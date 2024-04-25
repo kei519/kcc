@@ -2,6 +2,7 @@ mod codegen;
 mod parse;
 mod tokenize;
 
+use crate::codegen::*;
 use crate::parse::*;
 use crate::tokenize::*;
 
@@ -28,7 +29,8 @@ pub fn main(mut args: Vec<String>) -> u8 {
     let input = args.pop().unwrap().leak();
 
     // catch any error
-    match codegen::codegen(input) {
+    let mut gen = Generator::new(input);
+    match gen.codegen() {
         Err(e) => {
             e.show(input);
             return 1;

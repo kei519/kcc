@@ -56,6 +56,20 @@ impl BinOp {
     }
 }
 
+/// Condition statements.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CondKind {
+    /// while
+    While,
+}
+
+pub type Cond = Annot<CondKind>;
+
+impl Cond {
+    pub fn new(kind: CondKind, loc: Loc) -> Self {
+        Self { value: kind, loc }
+    }
+}
 /// Represents a node of the AST.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum NodeKind {
@@ -88,6 +102,15 @@ pub enum NodeKind {
         left: Box<Node>,
         /// Right side of the operator.
         right: Box<Node>,
+    },
+    /// Condition statemens.
+    Cond {
+        /// Condition type.
+        kind: Cond,
+        /// Reperesents condition.
+        cond: Box<Node>,
+        /// Executed statement when condition is passed.
+        then: Box<Node>,
     },
 }
 
@@ -134,6 +157,18 @@ impl Node {
                 op,
                 left: Box::new(left),
                 right: Box::new(right),
+            },
+            loc,
+        }
+    }
+
+    pub fn with_cond(kind: Cond, cond: Node, then: Node) -> Self {
+        let loc = kind.loc.merge(&cond.loc).merge(&then.loc);
+        Self {
+            value: NodeKind::Cond {
+                kind,
+                cond: Box::new(cond),
+                then: Box::new(then),
             },
             loc,
         }
@@ -358,19 +393,31 @@ impl Parser {
     }
 
     /// stmt = ( "return" )? expr ";"
+    ///      | "while" "(" expr ")" stmt
     pub fn stmt(&mut self) -> Result<Node> {
         let ret = match self.tok().value {
             TokenKind::Reserved(b"return") => {
                 let ret_loc = self.tok().loc;
                 self.skip();
-                Node::with_return(self.expr()?, ret_loc)
+                let ret_val = self.expr()?;
+                self.expect(b";")?;
+                Node::with_return(ret_val, ret_loc)
+            }
+            TokenKind::Reserved(b"while") => {
+                let while_loc = self.tok().loc;
+                self.skip();
+                self.expect(b"(")?;
+                let cond = self.expr()?;
+                self.expect(b")")?;
+                let then = self.stmt()?;
+                Node::with_cond(Cond::new(CondKind::While, while_loc), cond, then)
             }
             _ => {
                 let expr = self.expr()?;
+                self.expect(b";")?;
                 Node::with_unop(UnOp::new(UnOpKind::ExprStmt, expr.loc), expr)
             }
         };
-        self.expect(b";")?;
         Ok(ret)
     }
 

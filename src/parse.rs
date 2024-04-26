@@ -140,6 +140,27 @@ impl Cond {
     }
 }
 
+/// Represents function.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FuncKind {
+    /// Function name.
+    pub name: &'static str,
+    /// Args of the function.
+    pub args: Vec<Node>,
+}
+
+type Func = Annot<FuncKind>;
+
+impl Func {
+    /// Constructor.
+    pub fn new(name: &'static str, args: Vec<Node>, loc: Loc) -> Self {
+        Self {
+            value: FuncKind { name, args },
+            loc,
+        }
+    }
+}
+
 /// Represents a node of the AST.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum NodeKind {
@@ -180,6 +201,8 @@ pub enum NodeKind {
         /// Statements thet composes the block.
         stmts: Vec<Node>,
     },
+    /// Call function.
+    FnCall(Func),
 }
 
 pub type Node = Annot<NodeKind>;
@@ -241,6 +264,14 @@ impl Node {
     pub fn with_block(stmts: Vec<Node>, loc: Loc) -> Self {
         Self {
             value: NodeKind::Block { stmts },
+            loc,
+        }
+    }
+
+    pub fn with_fn_call(func: Func) -> Self {
+        let loc = func.loc;
+        Self {
+            value: NodeKind::FnCall(func),
             loc,
         }
     }
@@ -346,25 +377,43 @@ impl Parser {
         }
     }
 
-    /// primary = num | ident | "(" expr ")"
+    /// primary = num
+    ///         | ident ( "(" ")" | "(" expr ( "," expr )* ")" )?
+    ///         | "(" expr ")"
     pub fn primary(&mut self) -> Result<Node> {
         let tok_loc = self.tok().loc;
-        if self.consume(b"(") {
+        let ret = if self.consume(b"(") {
             let ret = self.expr()?;
             self.expect(b")")?;
-            Ok(ret)
+            ret
         } else if let TokenKind::Ident(name) = self.tok().value {
             self.skip();
-            let offset = match self.find_var(name) {
-                Some(o) => o,
-                None => self.add_var(name),
-            };
-            let ret = Node::with_var(name, offset, tok_loc);
-            Ok(ret)
+            if self.consume(b"(") {
+                // function call
+                let mut args = vec![];
+                if let Ok(expr) = self.expr() {
+                    args.push(expr);
+                    while self.consume(b",") {
+                        args.push(self.expr()?);
+                    }
+                }
+                let loc = tok_loc.merge(&self.tok().loc);
+                self.expect(b")")?;
+                Node::with_fn_call(Func::new(name, args, loc))
+            } else {
+                // variable
+                let offset = match self.find_var(name) {
+                    Some(o) => o,
+                    None => self.add_var(name),
+                };
+                let ret = Node::with_var(name, offset, tok_loc);
+                ret
+            }
         } else {
             let ret = Node::with_num(self.expect_number()?, tok_loc);
-            Ok(ret)
-        }
+            ret
+        };
+        Ok(ret)
     }
 
     /// unary = ( "+" | "-" )? primary

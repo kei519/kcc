@@ -2,12 +2,27 @@
 
 DIR=$(dirname $0)
 
+cat <<EOF | gcc -xc -c -o $DIR/tmp2.o -
+int ret3() { return 3; }
+int ret5() { return 5; }
+int add(int x, int y) { return x + y; }
+int sub(int x, int y) { return x - y; }
+
+int add6(int a, int b, int c, int d, int e, int f) {
+	return a + b + c + d + e + f;
+}
+
+int add7(int a, int b, int c, int d, int e, int f, int g) {
+	return a + b + c + d + e + f + g;
+}
+EOF
+
 assert() {
 	expected="$1"
 	input="$2"
 
 	"$DIR/../target/release/kcc" "$input" > "$DIR/tmp.s"
-	cc -o "$DIR/tmp" "$DIR/tmp.s"
+	cc -static -o "$DIR/tmp" "$DIR/tmp.s" "$DIR/tmp2.o"
 	"$DIR/tmp"
 	actual="$?"
 
@@ -98,6 +113,14 @@ assert 46 "for (i = 100; ; i = i - 1) if (i == 46) return i;"
 # block test
 assert 123 "a = 3; { a = a + 100; a = a + 20; } return a;"
 assert 8 "a = b = 0; while ( a + b < 10) { a = a + 1; b = b + 2; } return b;"
+
+# calling function test
+assert 3 "return ret3();"
+assert 5 "return ret5();"
+assert 11 "return add(3, 8);"
+assert 5 "return sub(8, 3);"
+assert 21 "return add6(1, 2, 3, 4, 5, 6);"
+assert 28 "return add7(1, 2, 3, 4, 5, 6, 7);"
 
 echo
 echo OK

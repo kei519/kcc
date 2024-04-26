@@ -57,19 +57,58 @@ impl BinOp {
 }
 
 /// Condition statements.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CondKind {
     /// while
-    While,
+    While {
+        /// Condition.
+        cond: Box<Node>,
+        /// Executed statement when condition is passed.
+        then: Box<Node>,
+    },
+    /// if
+    If {
+        /// Condition.
+        cond: Box<Node>,
+        /// Executed statement when condition is passed.
+        then: Box<Node>,
+        /// Else statement.
+        els: Option<Box<Node>>,
+    },
 }
 
 pub type Cond = Annot<CondKind>;
 
 impl Cond {
-    pub fn new(kind: CondKind, loc: Loc) -> Self {
-        Self { value: kind, loc }
+    pub fn with_while(loc: Loc, cond: Node, then: Node) -> Self {
+        let loc = loc.merge(&cond.loc).merge(&then.loc);
+        Self {
+            value: CondKind::While {
+                cond: Box::new(cond),
+                then: Box::new(then),
+            },
+            loc,
+        }
+    }
+
+    pub fn with_if(loc: Loc, cond: Node, then: Node, els: Option<Node>) -> Self {
+        let loc = loc.merge(&cond.loc).merge(&then.loc);
+        let (loc, els) = match els {
+            Some(e) => (loc.merge(&e.loc), Some(Box::new(e))),
+            None => (loc, None),
+        };
+
+        Self {
+            value: CondKind::If {
+                cond: Box::new(cond),
+                then: Box::new(then),
+                els,
+            },
+            loc,
+        }
     }
 }
+
 /// Represents a node of the AST.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum NodeKind {
@@ -104,14 +143,7 @@ pub enum NodeKind {
         right: Box<Node>,
     },
     /// Condition statemens.
-    Cond {
-        /// Condition type.
-        kind: Cond,
-        /// Reperesents condition.
-        cond: Box<Node>,
-        /// Executed statement when condition is passed.
-        then: Box<Node>,
-    },
+    Cond(Cond),
 }
 
 pub type Node = Annot<NodeKind>;
@@ -162,15 +194,11 @@ impl Node {
         }
     }
 
-    pub fn with_cond(kind: Cond, cond: Node, then: Node) -> Self {
-        let loc = kind.loc.merge(&cond.loc).merge(&then.loc);
+    pub fn with_cond(cond: Cond) -> Self {
+        let loc = cond.loc;
         Self {
-            value: NodeKind::Cond {
-                kind,
-                cond: Box::new(cond),
-                then: Box::new(then),
-            },
-            loc,
+            value: NodeKind::Cond(cond),
+            loc: loc,
         }
     }
 }
@@ -394,6 +422,7 @@ impl Parser {
 
     /// stmt = ( "return" )? expr ";"
     ///      | "while" "(" expr ")" stmt
+    ///      | "if" "(" expr ")" stmt ( "else" stmt )?
     pub fn stmt(&mut self) -> Result<Node> {
         let ret = match self.tok().value {
             TokenKind::Reserved(b"return") => {
@@ -410,7 +439,21 @@ impl Parser {
                 let cond = self.expr()?;
                 self.expect(b")")?;
                 let then = self.stmt()?;
-                Node::with_cond(Cond::new(CondKind::While, while_loc), cond, then)
+                Node::with_cond(Cond::with_while(while_loc, cond, then))
+            }
+            TokenKind::Reserved(b"if") => {
+                let if_loc = self.tok().loc;
+                self.skip();
+                self.expect(b"(")?;
+                let cond = self.expr()?;
+                self.expect(b")")?;
+                let then = self.stmt()?;
+
+                if self.consume(b"else") {
+                    Node::with_cond(Cond::with_if(if_loc, cond, then, Some(self.stmt()?)))
+                } else {
+                    Node::with_cond(Cond::with_if(if_loc, cond, then, None))
+                }
             }
             _ => {
                 let expr = self.expr()?;

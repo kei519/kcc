@@ -137,18 +137,38 @@ impl Generator {
 
                 println!("  push rax");
             }
-            NodeKind::Cond { kind, cond, then } => {
+            NodeKind::Cond(cond) => {
                 let label_index = self.label_num;
                 self.label_num += 1;
-                match kind.value {
-                    CondKind::While => {
+                match cond.value {
+                    CondKind::While { cond, then } => {
                         println!(".L.start.{}:", label_index);
                         self.gen(*cond)?;
                         println!("  pop rax");
-                        println!("  cmp rax, 0");
+                        println!("  test rax, rax");
                         println!("  je .L.end.{}", label_index);
                         self.gen(*then)?;
                         println!("  jmp .L.start.{}", label_index);
+                        println!(".L.end.{}:", label_index);
+                    }
+                    CondKind::If { cond, then, els } => {
+                        self.gen(*cond)?;
+                        println!("  pop rax");
+                        println!("  test rax, rax");
+                        if els.is_some() {
+                            println!("  je .L.else.{}", label_index);
+                        } else {
+                            println!("  je .L.end.{}", label_index);
+                        }
+                        self.gen(*then)?;
+                        match els {
+                            Some(els) => {
+                                println!("  jmp .L.end.{}", label_index);
+                                println!(".L.else.{}:", label_index);
+                                self.gen(*els)?;
+                            }
+                            None => {}
+                        }
                         println!(".L.end.{}:", label_index);
                     }
                 }

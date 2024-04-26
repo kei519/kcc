@@ -83,5 +83,12 @@ assert 16 "while (1) return 16; return 94;"
 assert 2 "while (0) return 248; return 2;"
 assert 48 "a = 0; while (a < 1) while (a < 48) a = a + 1; return a;"
 
+# if test
+assert 100 "if (1) return 100; return 50;"
+assert 50 "if (0) return 100; return 50;"
+assert 100 "if (1) return 100; else return 200; return 50;"
+assert 200 "if (0) return 100; else return 200; return 50;"
+assert 100 "a = 0; while (1) if (a < 100) a = a + 1; else return a;"
+
 echo
 echo OK

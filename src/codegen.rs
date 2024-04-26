@@ -207,9 +207,7 @@ impl Generator {
                     self.gen(stmt)?;
                 }
             }
-            NodeKind::FnCall(func) => {
-                let FuncKind { name, mut args } = func.value;
-
+            NodeKind::FnCall { name, mut args } => {
                 // adjust rsp to a multiple of 16.
                 let rev_stack_num = if (self.stack_len + args.len()) % 2 == 0 {
                     println!("  sub ${}, %rsp", MEMORY_SIZE);

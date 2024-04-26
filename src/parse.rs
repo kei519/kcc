@@ -140,27 +140,6 @@ impl Cond {
     }
 }
 
-/// Represents function.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FuncKind {
-    /// Function name.
-    pub name: &'static str,
-    /// Args of the function.
-    pub args: Vec<Node>,
-}
-
-type Func = Annot<FuncKind>;
-
-impl Func {
-    /// Constructor.
-    pub fn new(name: &'static str, args: Vec<Node>, loc: Loc) -> Self {
-        Self {
-            value: FuncKind { name, args },
-            loc,
-        }
-    }
-}
-
 /// Represents a node of the AST.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum NodeKind {
@@ -202,7 +181,12 @@ pub enum NodeKind {
         stmts: Vec<Node>,
     },
     /// Call function.
-    FnCall(Func),
+    FnCall {
+        /// The name of the function called.
+        name: &'static str,
+        /// The arguments passed to the function.
+        args: Vec<Node>,
+    },
 }
 
 pub type Node = Annot<NodeKind>;
@@ -268,10 +252,9 @@ impl Node {
         }
     }
 
-    pub fn with_fn_call(func: Func) -> Self {
-        let loc = func.loc;
+    pub fn with_fn_call(name: &'static str, args: Vec<Node>, loc: Loc) -> Self {
         Self {
-            value: NodeKind::FnCall(func),
+            value: NodeKind::FnCall { name, args },
             loc,
         }
     }
@@ -399,7 +382,7 @@ impl Parser {
                 }
                 let loc = tok_loc.merge(&self.tok().loc);
                 self.expect(b")")?;
-                Node::with_fn_call(Func::new(name, args, loc))
+                Node::with_fn_call(name, args, loc)
             } else {
                 // variable
                 let offset = match self.find_var(name) {

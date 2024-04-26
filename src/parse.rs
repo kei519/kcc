@@ -75,6 +75,17 @@ pub enum CondKind {
         /// Else statement.
         els: Option<Box<Node>>,
     },
+    /// for
+    For {
+        /// Initialize statement.
+        init: Option<Box<Node>>,
+        /// Condition.
+        cond: Option<Box<Node>>,
+        /// Increment statement.
+        inc: Option<Box<Node>>,
+        /// Executed statement when condition is passed.
+        then: Box<Node>,
+    },
 }
 
 pub type Cond = Annot<CondKind>;
@@ -103,6 +114,26 @@ impl Cond {
                 cond: Box::new(cond),
                 then: Box::new(then),
                 els,
+            },
+            loc,
+        }
+    }
+
+    pub fn with_for(
+        loc: Loc,
+        init: Option<Node>,
+        cond: Option<Node>,
+        inc: Option<Node>,
+        then: Node,
+    ) -> Self {
+        // the executed statement always follow the init, cond and inc statement.
+        let loc = loc.merge(&then.loc);
+        Self {
+            value: CondKind::For {
+                init: init.map(|e| Box::new(e)),
+                cond: cond.map(|e| Box::new(e)),
+                inc: inc.map(|e| Box::new(e)),
+                then: Box::new(then),
             },
             loc,
         }
@@ -423,26 +454,25 @@ impl Parser {
     /// stmt = ( "return" )? expr ";"
     ///      | "while" "(" expr ")" stmt
     ///      | "if" "(" expr ")" stmt ( "else" stmt )?
+    ///      | "for" "(" expr? ";" expr? ";" expr? ")" stmt
     pub fn stmt(&mut self) -> Result<Node> {
+        let loc = self.tok().loc;
         let ret = match self.tok().value {
             TokenKind::Reserved(b"return") => {
-                let ret_loc = self.tok().loc;
                 self.skip();
                 let ret_val = self.expr()?;
                 self.expect(b";")?;
-                Node::with_return(ret_val, ret_loc)
+                Node::with_return(ret_val, loc)
             }
             TokenKind::Reserved(b"while") => {
-                let while_loc = self.tok().loc;
                 self.skip();
                 self.expect(b"(")?;
                 let cond = self.expr()?;
                 self.expect(b")")?;
                 let then = self.stmt()?;
-                Node::with_cond(Cond::with_while(while_loc, cond, then))
+                Node::with_cond(Cond::with_while(loc, cond, then))
             }
             TokenKind::Reserved(b"if") => {
-                let if_loc = self.tok().loc;
                 self.skip();
                 self.expect(b"(")?;
                 let cond = self.expr()?;
@@ -450,10 +480,21 @@ impl Parser {
                 let then = self.stmt()?;
 
                 if self.consume(b"else") {
-                    Node::with_cond(Cond::with_if(if_loc, cond, then, Some(self.stmt()?)))
+                    Node::with_cond(Cond::with_if(loc, cond, then, Some(self.stmt()?)))
                 } else {
-                    Node::with_cond(Cond::with_if(if_loc, cond, then, None))
+                    Node::with_cond(Cond::with_if(loc, cond, then, None))
                 }
+            }
+            TokenKind::Reserved(b"for") => {
+                self.skip();
+                self.expect(b"(")?;
+                let init = self.expr().ok();
+                self.expect(b";")?;
+                let cond = self.expr().ok();
+                self.expect(b";")?;
+                let inc = self.expr().ok();
+                self.expect(b")")?;
+                Node::with_cond(Cond::with_for(loc, init, cond, inc, self.stmt()?))
             }
             _ => {
                 let expr = self.expr()?;

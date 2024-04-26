@@ -90,5 +90,10 @@ assert 100 "if (1) return 100; else return 200; return 50;"
 assert 200 "if (0) return 100; else return 200; return 50;"
 assert 100 "a = 0; while (1) if (a < 100) a = a + 1; else return a;"
 
+# for test
+assert 10 "for(i = 0; i < 10; i = i + 1) 1; return i;"
+assert 92 "i = 0; for (;;) if (i >= 92) return i; else i = i + 1;"
+assert 46 "for (i = 100; ; i = i - 1) if (i == 46) return i;"
+
 echo
 echo OK

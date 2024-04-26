@@ -171,6 +171,28 @@ impl Generator {
                         }
                         println!(".L.end.{}:", label_index);
                     }
+                    CondKind::For {
+                        init,
+                        cond,
+                        inc,
+                        then,
+                    } => {
+                        if let Some(init) = init {
+                            self.gen(*init)?;
+                        }
+                        println!("  .L.start.{}:", label_index);
+                        if let Some(cond) = cond {
+                            self.gen(*cond)?;
+                            println!("  test rax, rax");
+                            println!("  je .L.end.{}", label_index);
+                        }
+                        self.gen(*then)?;
+                        if let Some(inc) = inc {
+                            self.gen(*inc)?;
+                        }
+                        println!(" jmp .L.start.{}", label_index);
+                        println!(".L.end.{}:", label_index);
+                    }
                 }
             }
         }

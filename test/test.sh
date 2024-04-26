@@ -95,5 +95,9 @@ assert 10 "for(i = 0; i < 10; i = i + 1) 1; return i;"
 assert 92 "i = 0; for (;;) if (i >= 92) return i; else i = i + 1;"
 assert 46 "for (i = 100; ; i = i - 1) if (i == 46) return i;"
 
+# block test
+assert 123 "a = 3; { a = a + 100; a = a + 20; } return a;"
+assert 8 "a = b = 0; while ( a + b < 10) { a = a + 1; b = b + 2; } return b;"
+
 echo
 echo OK

@@ -175,6 +175,11 @@ pub enum NodeKind {
     },
     /// Condition statemens.
     Cond(Cond),
+    /// Block.
+    Block {
+        /// Statements thet composes the block.
+        stmts: Vec<Node>,
+    },
 }
 
 pub type Node = Annot<NodeKind>;
@@ -230,6 +235,13 @@ impl Node {
         Self {
             value: NodeKind::Cond(cond),
             loc: loc,
+        }
+    }
+
+    pub fn with_block(stmts: Vec<Node>, loc: Loc) -> Self {
+        Self {
+            value: NodeKind::Block { stmts },
+            loc,
         }
     }
 }
@@ -452,6 +464,7 @@ impl Parser {
     }
 
     /// stmt = ( "return" )? expr ";"
+    ///      | "{" stmt* "}"
     ///      | "while" "(" expr ")" stmt
     ///      | "if" "(" expr ")" stmt ( "else" stmt )?
     ///      | "for" "(" expr? ";" expr? ";" expr? ")" stmt
@@ -495,6 +508,17 @@ impl Parser {
                 let inc = self.expr().ok();
                 self.expect(b")")?;
                 Node::with_cond(Cond::with_for(loc, init, cond, inc, self.stmt()?))
+            }
+            TokenKind::Reserved(b"{") => {
+                self.skip();
+                let mut stmts = vec![];
+                while let Ok(stmt) = self.stmt() {
+                    stmts.push(stmt);
+                }
+                // A block location should be between "{" and "}".
+                let loc = loc.merge(&self.tok().loc);
+                self.expect(b"}")?;
+                Node::with_block(stmts, loc)
             }
             _ => {
                 let expr = self.expr()?;

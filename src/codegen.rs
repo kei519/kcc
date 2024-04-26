@@ -195,6 +195,11 @@ impl Generator {
                     }
                 }
             }
+            NodeKind::Block { stmts } => {
+                for stmt in stmts {
+                    self.gen(stmt)?;
+                }
+            }
         }
 
         Ok(())

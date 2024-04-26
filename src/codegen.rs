@@ -21,15 +21,14 @@ impl Generator {
         let mut parser = Parser::new(tokens);
 
         // prepare for assembler
-        println!(".intel_syntax noprefix");
         println!(".global main");
         println!("main:");
-        println!("  push rbp");
-        println!("  mov rbp, rsp");
+        println!("  push %rbp");
+        println!("  mov %rsp, %rbp");
 
         let (nodes, var_num) = parser.parse()?;
         // take the space for the variables
-        println!("  sub rsp, {}", var_num * MEMORY_SIZE);
+        println!("  sub ${}, %rsp", var_num * MEMORY_SIZE);
         for node in nodes {
             self.gen(node)?;
         }
@@ -43,20 +42,20 @@ impl Generator {
         match node {
             // When the node is a number, it is a terminal.
             NodeKind::Num(val) => {
-                println!("  push {}", val);
+                println!("  push ${}", val);
                 return Ok(());
             }
             NodeKind::Var { offset, .. } => {
-                println!("  lea rdi, [rbp - {}]", offset);
-                println!("  mov rax, [rdi]");
-                println!("  push rax");
+                println!("  lea -{}(%rbp), %rdi", offset);
+                println!("  mov (%rdi), %rax");
+                println!("  push %rax");
             }
             NodeKind::Return { val } => {
                 self.gen(*val)?;
 
-                println!("  pop rax");
-                println!("  mov rsp, rbp");
-                println!("  pop rbp");
+                println!("  pop %rax");
+                println!("  mov %rbp, %rsp");
+                println!("  pop %rbp");
                 println!("  ret");
             }
             NodeKind::UnOp { op, arg } => {
@@ -64,12 +63,12 @@ impl Generator {
                 match op.value {
                     UnOpKind::Pos => {}
                     UnOpKind::Neg => {
-                        println!("  pop rax");
-                        println!("  neg rax");
-                        println!("  push rax");
+                        println!("  pop %rax");
+                        println!("  neg %rax");
+                        println!("  push %rax");
                     }
                     UnOpKind::ExprStmt => {
-                        println!("  add rsp, {}", MEMORY_SIZE);
+                        println!("  add ${}, %rsp", MEMORY_SIZE);
                     }
                 }
             }
@@ -78,10 +77,10 @@ impl Generator {
                     BinOpKind::Assign => {
                         lval_gen(*left)?;
                         self.gen(*right)?;
-                        println!("  pop rax");
-                        println!("  pop rdi");
-                        println!("  mov [rdi], rax");
-                        println!("  push rax");
+                        println!("  pop %rax");
+                        println!("  pop %rdi");
+                        println!("  mov %rax, (%rdi)");
+                        println!("  push %rax");
                         return Ok(());
                     }
                     _ => {}
@@ -90,52 +89,52 @@ impl Generator {
                 self.gen(*left)?;
                 self.gen(*right)?;
 
-                println!("  pop rdi");
-                println!("  pop rax");
+                println!("  pop %rdi");
+                println!("  pop %rax");
 
                 match op.value {
-                    BinOpKind::Add => println!("  add rax, rdi"),
-                    BinOpKind::Sub => println!("  sub rax, rdi"),
-                    BinOpKind::Mul => println!("  imul rax, rdi"),
+                    BinOpKind::Add => println!("  add %rdi, %rax"),
+                    BinOpKind::Sub => println!("  sub %rdi, %rax"),
+                    BinOpKind::Mul => println!("  imul %rdi, %rax"),
                     BinOpKind::Div => {
                         println!("  cqo");
-                        println!("  idiv rdi");
+                        println!("  idiv %rdi");
                     }
                     BinOpKind::Eq => {
-                        println!("  cmp rax, rdi");
-                        println!("  sete al");
-                        println!("  movzb rax, al");
+                        println!("  cmp %rdi, %rax");
+                        println!("  sete %al");
+                        println!("  movzb %al, %rax");
                     }
                     BinOpKind::Ne => {
-                        println!("  cmp rax, rdi");
-                        println!("  setne al");
-                        println!("  movzb rax, al");
+                        println!("  cmp %rdi, %rax");
+                        println!("  setne %al");
+                        println!("  movzb %al, %rax");
                     }
                     BinOpKind::Lt => {
-                        println!("  cmp rax, rdi");
-                        println!("  setl al");
-                        println!("  movzb rax, al");
+                        println!("  cmp %rdi, %rax");
+                        println!("  setl %al");
+                        println!("  movzb %al, %rax");
                     }
                     BinOpKind::Le => {
-                        println!("  cmp rax, rdi");
-                        println!("  setle al");
-                        println!("  movzb rax, al");
+                        println!("  cmp %rdi, %rax");
+                        println!("  setle %al");
+                        println!("  movzb %al, %rax");
                     }
                     BinOpKind::Gt => {
-                        println!("  cmp rax, rdi");
-                        println!("  setg al");
-                        println!("  movzb rax, al");
+                        println!("  cmp %rdi, %rax");
+                        println!("  setg %al");
+                        println!("  movzb %al, %rax");
                     }
                     BinOpKind::Ge => {
-                        println!("  cmp rax, rdi");
-                        println!("  setge al");
-                        println!("  movzb rax, al");
+                        println!("  cmp %rdi, %rax");
+                        println!("  setge %al");
+                        println!("  movzb %al, %rax");
                     }
                     // never reaches here
                     BinOpKind::Assign => {}
                 }
 
-                println!("  push rax");
+                println!("  push %rax");
             }
             NodeKind::Cond(cond) => {
                 let label_index = self.label_num;
@@ -144,8 +143,8 @@ impl Generator {
                     CondKind::While { cond, then } => {
                         println!(".L.start.{}:", label_index);
                         self.gen(*cond)?;
-                        println!("  pop rax");
-                        println!("  test rax, rax");
+                        println!("  pop %rax");
+                        println!("  test %rax, %rax");
                         println!("  je .L.end.{}", label_index);
                         self.gen(*then)?;
                         println!("  jmp .L.start.{}", label_index);
@@ -153,8 +152,8 @@ impl Generator {
                     }
                     CondKind::If { cond, then, els } => {
                         self.gen(*cond)?;
-                        println!("  pop rax");
-                        println!("  test rax, rax");
+                        println!("  pop %rax");
+                        println!("  test %rax, %rax");
                         if els.is_some() {
                             println!("  je .L.else.{}", label_index);
                         } else {
@@ -183,7 +182,7 @@ impl Generator {
                         println!("  .L.start.{}:", label_index);
                         if let Some(cond) = cond {
                             self.gen(*cond)?;
-                            println!("  test rax, rax");
+                            println!("  test %rax, %rax");
                             println!("  je .L.end.{}", label_index);
                         }
                         self.gen(*then)?;
@@ -210,8 +209,8 @@ impl Generator {
 fn lval_gen(node: Node) -> Result<()> {
     match node.value {
         NodeKind::Var { offset, .. } => {
-            println!("  lea rdi, [rbp - {}]", offset);
-            println!("  push rdi");
+            println!("  lea -{}(%rbp), %rdi", offset);
+            println!("  push %rdi");
             Ok(())
         }
         _ => Err(Error {

@@ -7,14 +7,15 @@ const ARGREG: [&'static str; 6] = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
 pub struct Var {
     /// The name of the variable.
     pub name: &'static str,
+    pub ty: Type,
     /// The offset from the function frame top (rbp).
     pub offset: isize,
 }
 
 impl Var {
     /// Constructor.
-    pub fn new(name: &'static str, offset: isize) -> Self {
-        Self { name, offset }
+    pub fn new(name: &'static str, ty: Type, offset: isize) -> Self {
+        Self { name, ty, offset }
     }
 }
 
@@ -62,8 +63,8 @@ impl Generator {
                 self.push_imm(val);
                 return Ok(());
             }
-            NodeKind::Var(name) => {
-                let var = self.find_var(name, loc)?;
+            NodeKind::Var(var) => {
+                let var = self.find_var(var.value.name, loc)?;
                 if var.offset >= 0 {
                     println!("  lea -{}(%rbp), %rdi", var.offset);
                 } else {
@@ -283,22 +284,26 @@ impl Generator {
                 }
 
                 // deploys parameters on the stack.
-                for i in 0..deploy_param_num {
-                    let offset = (i + 1) * MEMORY_SIZE;
-                    println!("  mov %{}, -{}(%rbp)", ARGREG[i], offset);
-                    self.vars.push(Var::new(params[i], offset as isize))
-                }
-
-                // sets args offsets of the parameters passed with the stack.
-                for i in 6..params.len() {
-                    self.vars
-                        .push(Var::new(params[i], -(((i - 4) * MEMORY_SIZE) as isize)));
+                for (i, param) in params.into_iter().enumerate() {
+                    if i < 6 {
+                        let offset = (i + 1) * MEMORY_SIZE;
+                        println!("  mov %{}, -{}(%rbp)", ARGREG[i], offset);
+                        self.vars
+                            .push(Var::new(param.name, param.ty, offset as isize))
+                    } else {
+                        self.vars.push(Var::new(
+                            param.name,
+                            param.ty,
+                            -(((i - 4) * MEMORY_SIZE) as isize),
+                        ));
+                    }
                 }
 
                 // registers local variables
-                for (i, name) in locals.into_iter().enumerate() {
+                for (i, var) in locals.into_iter().enumerate() {
                     self.vars.push(Var::new(
-                        name,
+                        var.name,
+                        var.ty,
                         ((i + deploy_param_num + 1) * MEMORY_SIZE) as isize,
                     ));
                 }
@@ -308,7 +313,7 @@ impl Generator {
                     self.gen(stmt)?;
                 }
             }
-            NodeKind::Decl(_) => {}
+            NodeKind::Null => {}
         }
 
         Ok(())
@@ -334,8 +339,8 @@ impl Generator {
     /// Checks if the lvalue then calculates the address.
     fn lval_gen(&mut self, node: Node) -> Result<()> {
         match node.value {
-            NodeKind::Var(name) => {
-                let var = self.find_var(name, node.loc)?;
+            NodeKind::Var(var) => {
+                let var = self.find_var(var.value.name, node.loc)?;
 
                 if var.offset >= 0 {
                     println!("  lea -{}(%rbp), %rdi", var.offset);

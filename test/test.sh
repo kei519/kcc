@@ -131,7 +131,12 @@ assert 120 "int fact(int n) { if (n == 0) return 1; else return n * fact(n - 1);
 assert 3 "int fn(int a, int b, int c, int d, int e, int f) { return a + c + e - b -d - f; } int main() { return fn(6, 5, 4, 3, 2, 1); }"
 assert 4 "int fn(int a, int b, int c, int d, int e, int f, int g, int h) { return a + c + e + g - b - d - f - h; } int main() { return fn(8, 7, 6, 5, 4, 3, 2, 1); }"
 
-assert 8 "int add_ptr(int p, int a) { *p = *p + a; return 0; } int main() { int a; a = 5; add_ptr(&a, 3); return a; }"
+# ptr test
+assert 8 "int add_ptr(int *p, int a) { *p = *p + a; return 0; } int main() { int a; a = 5; add_ptr(&a, 3); return a; }"
+assert 59 "int main() { int a; int *p; int **pp; pp = &p; p = &a; a = 0; *p = *p + 49; **pp = **pp + 10; return a; }"
+
+# declaration test
+assert 47 "int main() { int a = 87; return a - 40; }"
 
 echo
 echo OK

@@ -1,10 +1,12 @@
 mod codegen;
 mod parse;
 mod tokenize;
+mod typing;
 
 use crate::codegen::*;
 use crate::parse::*;
 use crate::tokenize::*;
+use crate::typing::*;
 
 pub type StdResult<T, E> = std::result::Result<T, E>;
 pub type Result<T> = StdResult<T, Error>;

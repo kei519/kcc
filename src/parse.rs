@@ -144,20 +144,39 @@ impl Cond {
     }
 }
 
+/// Represents variables names and types.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct VarKind {
+    /// The name of the variable.
+    pub name: &'static str,
+    /// The type of the variable.
+    pub ty: Type,
+}
+
+type Var = Annot<VarKind>;
+
+impl Var {
+    /// Constructor.
+    fn new(name: &'static str, ty: Type, loc: Loc) -> Self {
+        Self {
+            value: VarKind { name, ty },
+            loc,
+        }
+    }
+}
+
 /// Represents a node of the AST.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum NodeKind {
     /// Integer
     Num(u64),
     /// Variable
-    Var(&'static str),
+    Var(Var),
     /// "return"
     Return {
         /// returned value
         val: Box<Node>,
     },
-    /// Variable Declaration.
-    Decl(&'static str),
     /// Unary operator.
     UnOp {
         /// Operator type.
@@ -193,12 +212,14 @@ pub enum NodeKind {
         /// Name of the defined function.
         name: &'static str,
         /// Parameters passed by a caller.
-        params: Vec<&'static str>,
+        params: Vec<VarKind>,
         /// Local variable defined in the function.
-        locals: Vec<&'static str>,
+        locals: Vec<VarKind>,
         /// Statements
         stmts: Vec<Node>,
     },
+    /// Empty statement.
+    Null,
 }
 
 pub type Node = Annot<NodeKind>;
@@ -211,9 +232,10 @@ impl Node {
         }
     }
 
-    pub fn with_var(name: &'static str, loc: Loc) -> Self {
+    pub fn with_var(var: Var) -> Self {
+        let loc = var.loc;
         Self {
-            value: NodeKind::Var(name),
+            value: NodeKind::Var(var),
             loc,
         }
     }
@@ -226,9 +248,9 @@ impl Node {
         }
     }
 
-    pub fn with_decl(name: &'static str, loc: Loc) -> Self {
+    pub fn with_decl(loc: Loc) -> Self {
         Self {
-            value: NodeKind::Decl(name),
+            value: NodeKind::Null,
             loc,
         }
     }
@@ -280,8 +302,8 @@ impl Node {
 
     pub fn with_fn_def(
         name: &'static str,
-        params: Vec<&'static str>,
-        locals: Vec<&'static str>,
+        params: Vec<VarKind>,
+        locals: Vec<VarKind>,
         stmts: Vec<Node>,
         loc: Loc,
     ) -> Self {
@@ -301,9 +323,9 @@ pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,
     /// Parameters of a function that is parsing.
-    params: Vec<&'static str>,
+    params: Vec<VarKind>,
     /// Local variables of a function that is parsing.
-    locals: Vec<&'static str>,
+    locals: Vec<VarKind>,
 }
 
 impl Parser {
@@ -333,18 +355,18 @@ impl Parser {
         }
     }
 
-    /// Adds a new variable and returns the offset.
-    pub fn add_var(&mut self, name: &'static str) {
-        self.locals.push(name);
+    /// Adds a new variable.
+    pub fn add_var(&mut self, name: &'static str, ty: Type) {
+        self.locals.push(VarKind { name, ty });
     }
 
-    /// Finds the same name variable and returns the offset.
-    pub fn find_var(&self, name: &'static str) -> bool {
+    /// Finds the same name variable and returns the type.
+    pub fn find_var(&self, name: &'static str) -> Option<Type> {
         self.params
             .iter()
             .chain(self.locals.iter())
-            .find(|&&n| n == name)
-            .is_some()
+            .find(|&v| v.name == name)
+            .map(|v| v.ty.clone())
     }
 
     /// Skip one token.
@@ -416,30 +438,37 @@ impl Parser {
             return Ok(());
         }
 
-        let ty_loc = self.tok().loc;
-        if self.consume_ident()? != "int" {
-            return Err(Error {
-                value: ErrorKind::Error("argument type is required"),
-                loc: ty_loc,
-            });
-        }
+        let ty = self.basetype()?;
         let name = self.consume_ident()?;
-        self.params.push(name);
+        self.params.push(VarKind { name, ty });
 
         while !self.consume(b")") {
             self.expect(b",")?;
-            let ty_loc = self.tok().loc;
-            if self.consume_ident()? != "int" {
-                return Err(Error {
-                    value: ErrorKind::Error("argument type is required"),
-                    loc: ty_loc,
-                });
-            }
+            let ty = self.basetype()?;
             let name = self.consume_ident()?;
-            self.params.push(name);
+            self.params.push(VarKind { name, ty });
         }
 
         Ok(())
+    }
+
+    /// basetype = "int" "*"*
+    fn basetype(&mut self) -> Result<Type> {
+        let loc = self.tok().loc;
+        if let TokenKind::Ident(type_name) = self.tok().value {
+            if type_name == "int" {
+                self.skip();
+                let mut ty = Type::new(TypeKind::Int);
+                while self.consume(b"*") {
+                    ty = Type::with_ptr(Type::new(TypeKind::Int));
+                }
+                return Ok(ty);
+            }
+        }
+        return Err(Error {
+            value: ErrorKind::Error("This is not type name"),
+            loc,
+        });
     }
 
     /// primary = num
@@ -467,13 +496,13 @@ impl Parser {
                 Node::with_fn_call(name, args, loc)
             } else {
                 // variable
-                if !self.find_var(name) {
+                let Some(ty) = self.find_var(name) else {
                     return Err(Error {
                         value: ErrorKind::Error("undefined variable"),
                         loc: tok_loc,
                     });
-                }
-                Node::with_var(name, tok_loc)
+                };
+                Node::with_var(Var::new(name, ty, tok_loc))
             }
         } else {
             let ret = Node::with_num(self.expect_number()?, tok_loc);
@@ -579,17 +608,41 @@ impl Parser {
         Ok(ret)
     }
 
+    /// declaration = basetype ident ("=" expr)? ";"
+    pub fn declaration(&mut self) -> Result<Node> {
+        let loc = self.tok().loc;
+        let ty = self.basetype()?;
+        let name = self.consume_ident()?;
+        self.add_var(name, ty.clone());
+
+        {
+            let loc = loc.merge(&self.tok().loc);
+            if self.consume(b";") {
+                return Ok(Node::with_decl(loc));
+            }
+        }
+
+        let left = Node::with_var(Var::new(name, ty, loc));
+        self.expect(b"=")?;
+        let right = self.expr()?;
+        let loc = loc.merge(&self.tok().loc);
+        self.expect(b";")?;
+
+        let node = Node::with_binop(BinOp::new(BinOpKind::Assign, loc), left, right);
+        Ok(Node::with_unop(UnOp::new(UnOpKind::ExprStmt, loc), node))
+    }
+
     /// expr = assign
     pub fn expr(&mut self) -> Result<Node> {
         self.assign()
     }
 
     /// stmt = ( "return" )? expr ";"
-    ///      | "int" identifier ";"
     ///      | "{" stmt* "}"
     ///      | "while" "(" expr ")" stmt
     ///      | "if" "(" expr ")" stmt ( "else" stmt )?
     ///      | "for" "(" expr? ";" expr? ";" expr? ")" stmt
+    ///      | declaration
     pub fn stmt(&mut self) -> Result<Node> {
         let loc = self.tok().loc;
         let ret = match self.tok().value {
@@ -642,36 +695,28 @@ impl Parser {
                 self.expect(b"}")?;
                 Node::with_block(stmts, loc)
             }
-            TokenKind::Ident("int") => {
-                self.skip();
-                let name = self.consume_ident()?;
-                self.add_var(name);
-                let loc = loc.merge(&self.tok().loc);
-                self.consume(b";");
-                Node::with_decl(name, loc)
-            }
             _ => {
-                let expr = self.expr()?;
-                self.expect(b";")?;
-                Node::with_unop(UnOp::new(UnOpKind::ExprStmt, expr.loc), expr)
+                // checks whether it is the declaration of the variable.
+                if let Ok(node) = self.declaration() {
+                    node
+                } else {
+                    let expr = self.expr()?;
+                    self.expect(b";")?;
+                    Node::with_unop(UnOp::new(UnOpKind::ExprStmt, expr.loc), expr)
+                }
             }
         };
         Ok(ret)
     }
 
-    /// function = "int" ident "(" params? ")" "{" stmt* "}"
-    /// params = "int" ident ( "," "int" ident )*
+    /// function = basetype ident "(" params? ")" "{" stmt* "}"
+    /// params = basetype ( "," param )*
+    /// param = basetype ident
     pub fn function(&mut self) -> Result<Node> {
         use std::mem::replace;
 
         let func_start_loc = self.tok().loc;
-        // type check
-        if self.consume_ident()? != "int" {
-            return Err(Error {
-                value: ErrorKind::Error("return type is required"),
-                loc: func_start_loc,
-            });
-        }
+        self.basetype()?;
 
         let func_name = self.consume_ident()?;
         self.expect(b"(")?;

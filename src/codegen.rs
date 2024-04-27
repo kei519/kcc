@@ -308,6 +308,7 @@ impl Generator {
                     self.gen(stmt)?;
                 }
             }
+            NodeKind::Decl(_) => {}
         }
 
         Ok(())

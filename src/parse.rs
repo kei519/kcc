@@ -156,6 +156,8 @@ pub enum NodeKind {
         /// returned value
         val: Box<Node>,
     },
+    /// Variable Declaration.
+    Decl(&'static str),
     /// Unary operator.
     UnOp {
         /// Operator type.
@@ -220,6 +222,13 @@ impl Node {
         let loc = ret_loc.merge(&val.loc);
         Self {
             value: NodeKind::Return { val: Box::new(val) },
+            loc,
+        }
+    }
+
+    pub fn with_decl(name: &'static str, loc: Loc) -> Self {
+        Self {
+            value: NodeKind::Decl(name),
             loc,
         }
     }
@@ -407,11 +416,25 @@ impl Parser {
             return Ok(());
         }
 
+        let ty_loc = self.tok().loc;
+        if self.consume_ident()? != "int" {
+            return Err(Error {
+                value: ErrorKind::Error("argument type is required"),
+                loc: ty_loc,
+            });
+        }
         let name = self.consume_ident()?;
         self.params.push(name);
 
         while !self.consume(b")") {
             self.expect(b",")?;
+            let ty_loc = self.tok().loc;
+            if self.consume_ident()? != "int" {
+                return Err(Error {
+                    value: ErrorKind::Error("argument type is required"),
+                    loc: ty_loc,
+                });
+            }
             let name = self.consume_ident()?;
             self.params.push(name);
         }
@@ -445,7 +468,10 @@ impl Parser {
             } else {
                 // variable
                 if !self.find_var(name) {
-                    self.add_var(name);
+                    return Err(Error {
+                        value: ErrorKind::Error("undefined variable"),
+                        loc: tok_loc,
+                    });
                 }
                 Node::with_var(name, tok_loc)
             }
@@ -559,6 +585,7 @@ impl Parser {
     }
 
     /// stmt = ( "return" )? expr ";"
+    ///      | "int" identifier ";"
     ///      | "{" stmt* "}"
     ///      | "while" "(" expr ")" stmt
     ///      | "if" "(" expr ")" stmt ( "else" stmt )?
@@ -615,6 +642,14 @@ impl Parser {
                 self.expect(b"}")?;
                 Node::with_block(stmts, loc)
             }
+            TokenKind::Ident("int") => {
+                self.skip();
+                let name = self.consume_ident()?;
+                self.add_var(name);
+                let loc = loc.merge(&self.tok().loc);
+                self.consume(b";");
+                Node::with_decl(name, loc)
+            }
             _ => {
                 let expr = self.expr()?;
                 self.expect(b";")?;
@@ -624,12 +659,20 @@ impl Parser {
         Ok(ret)
     }
 
-    /// function = ident "(" params? ")" "{" stmt* "}"
-    /// params = ident ( "," ident )*
+    /// function = "int" ident "(" params? ")" "{" stmt* "}"
+    /// params = "int" ident ( "," "int" ident )*
     pub fn function(&mut self) -> Result<Node> {
         use std::mem::replace;
 
-        let func_name_loc = self.tok().loc;
+        let func_start_loc = self.tok().loc;
+        // type check
+        if self.consume_ident()? != "int" {
+            return Err(Error {
+                value: ErrorKind::Error("return type is required"),
+                loc: func_start_loc,
+            });
+        }
+
         let func_name = self.consume_ident()?;
         self.expect(b"(")?;
         self.read_func_params()?;
@@ -638,7 +681,7 @@ impl Parser {
         while let Ok(node) = self.stmt() {
             stmts.push(node);
         }
-        let loc = func_name_loc.merge(&self.tok().loc);
+        let loc = func_start_loc.merge(&self.tok().loc);
         self.expect(b"}")?;
         let params = replace(&mut self.params, vec![]);
         let locals = replace(&mut self.locals, vec![]);

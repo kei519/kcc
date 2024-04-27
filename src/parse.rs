@@ -146,12 +146,7 @@ pub enum NodeKind {
     /// Integer
     Num(u64),
     /// Variable
-    Var {
-        /// the name of the variable
-        name: &'static str,
-        /// the offset of the variable from rbp
-        offset: usize,
-    },
+    Var(&'static str),
     /// "return"
     Return {
         /// returned value
@@ -187,6 +182,17 @@ pub enum NodeKind {
         /// The arguments passed to the function.
         args: Vec<Node>,
     },
+    /// Define function.
+    FnDef {
+        /// Name of the defined function.
+        name: &'static str,
+        /// Parameters passed by a caller.
+        params: Vec<&'static str>,
+        /// Local variable defined in the function.
+        locals: Vec<&'static str>,
+        /// Statements
+        stmts: Vec<Node>,
+    },
 }
 
 pub type Node = Annot<NodeKind>;
@@ -199,9 +205,9 @@ impl Node {
         }
     }
 
-    pub fn with_var(name: &'static str, offset: usize, loc: Loc) -> Self {
+    pub fn with_var(name: &'static str, loc: Loc) -> Self {
         Self {
-            value: NodeKind::Var { name, offset },
+            value: NodeKind::Var(name),
             loc,
         }
     }
@@ -258,13 +264,33 @@ impl Node {
             loc,
         }
     }
+
+    pub fn with_fn_def(
+        name: &'static str,
+        params: Vec<&'static str>,
+        locals: Vec<&'static str>,
+        stmts: Vec<Node>,
+        loc: Loc,
+    ) -> Self {
+        Self {
+            value: NodeKind::FnDef {
+                name,
+                params,
+                locals,
+                stmts,
+            },
+            loc,
+        }
+    }
 }
 
 pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,
-    /// holds variales names and the offsets of them
-    vars: Vec<&'static str>,
+    /// Parameters of a function that is parsing.
+    params: Vec<&'static str>,
+    /// Local variables of a function that is parsing.
+    locals: Vec<&'static str>,
 }
 
 impl Parser {
@@ -273,7 +299,8 @@ impl Parser {
         Self {
             tokens,
             pos: 0,
-            vars: vec![],
+            params: vec![],
+            locals: vec![],
         }
     }
 
@@ -294,21 +321,17 @@ impl Parser {
     }
 
     /// Adds a new variable and returns the offset.
-    pub fn add_var(&mut self, name: &'static str) -> usize {
-        self.vars.push(name);
-        Self::offset(self.vars.len() - 1)
+    pub fn add_var(&mut self, name: &'static str) {
+        self.locals.push(name);
     }
 
     /// Finds the same name variable and returns the offset.
-    pub fn find_var(&self, name: &'static str) -> Option<usize> {
-        self.vars
+    pub fn find_var(&self, name: &'static str) -> bool {
+        self.params
             .iter()
-            .position(|&var| var == name)
-            .map(|i| Self::offset(i))
-    }
-
-    fn offset(index: usize) -> usize {
-        (index + 1) * MEMORY_SIZE
+            .chain(self.locals.iter())
+            .find(|&&n| n == name)
+            .is_some()
     }
 
     /// Skip one token.
@@ -348,7 +371,7 @@ impl Parser {
         }
     }
 
-    /// Read a token when it is the expected char and returns true,
+    /// Reads a token when it is the expected char and returns true,
     /// otherwise returns false.
     pub fn consume(&mut self, op: &[u8]) -> bool {
         match self.tok().value {
@@ -360,8 +383,40 @@ impl Parser {
         }
     }
 
+    /// Reads an indentifier name when the token is ident,
+    /// otherwise returns an Error.
+    pub fn consume_ident(&mut self) -> Result<&'static str> {
+        let TokenKind::Ident(name) = self.tok().value else {
+            return Err(Error {
+                value: ErrorKind::Error("some name is required"),
+                loc: self.tok().loc,
+            });
+        };
+        self.skip();
+        Ok(name)
+    }
+
+    /// Reads parameters of a function followed by ")" and returns a list of them.
+    /// When some other tokens is shown, returns Error.
+    pub fn read_func_params(&mut self) -> Result<()> {
+        if self.consume(b")") {
+            return Ok(());
+        }
+
+        let name = self.consume_ident()?;
+        self.params.push(name);
+
+        while !self.consume(b")") {
+            self.expect(b",")?;
+            let name = self.consume_ident()?;
+            self.params.push(name);
+        }
+
+        Ok(())
+    }
+
     /// primary = num
-    ///         | ident ( "(" ")" | "(" expr ( "," expr )* ")" )?
+    ///         | ident ( "(" params? ")" )?
     ///         | "(" expr ")"
     pub fn primary(&mut self) -> Result<Node> {
         let tok_loc = self.tok().loc;
@@ -385,12 +440,10 @@ impl Parser {
                 Node::with_fn_call(name, args, loc)
             } else {
                 // variable
-                let offset = match self.find_var(name) {
-                    Some(o) => o,
-                    None => self.add_var(name),
-                };
-                let ret = Node::with_var(name, offset, tok_loc);
-                ret
+                if !self.find_var(name) {
+                    self.add_var(name);
+                }
+                Node::with_var(name, tok_loc)
             }
         } else {
             let ret = Node::with_num(self.expect_number()?, tok_loc);
@@ -561,17 +614,33 @@ impl Parser {
         Ok(ret)
     }
 
-    /// program = stmt*
+    /// function = ident "(" params? ")" "{" stmt* "}"
+    /// params = ident ( "," ident )*
+    pub fn function(&mut self) -> Result<Node> {
+        use std::mem::replace;
+
+        let func_name_loc = self.tok().loc;
+        let func_name = self.consume_ident()?;
+        self.expect(b"(")?;
+        self.read_func_params()?;
+        self.expect(b"{")?;
+        let mut stmts = vec![];
+        while let Ok(node) = self.stmt() {
+            stmts.push(node);
+        }
+        let loc = func_name_loc.merge(&self.tok().loc);
+        self.expect(b"}")?;
+        let params = replace(&mut self.params, vec![]);
+        let locals = replace(&mut self.locals, vec![]);
+        Ok(Node::with_fn_def(func_name, params, locals, stmts, loc))
+    }
+
+    /// program = function*
     pub fn program(&mut self) -> Result<Vec<Node>> {
         let mut nodes = vec![];
         while self.tok().value != TokenKind::Eof {
-            nodes.push(self.stmt()?);
+            nodes.push(self.function()?);
         }
         Ok(nodes)
-    }
-
-    /// Returns parse result, the nodes and the number of variables.
-    pub fn parse(&mut self) -> Result<(Vec<Node>, usize)> {
-        Ok((self.program()?, self.vars.len()))
     }
 }

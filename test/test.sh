@@ -130,5 +130,8 @@ assert 123 "ret123() { return 123; } main() { return ret123(); }"
 assert 120 "fact(n) { if (n == 0) return 1; else return n * fact(n - 1); } main() { return fact(5); }"
 assert 3 "fn(a, b, c, d, e, f) { return a + c + e - b -d - f; } main() { return fn(6, 5, 4, 3, 2, 1); }"
 assert 4 "fn(a, b, c, d, e, f, g, h) { return a + c + e + g - b - d - f - h; } main() { return fn(8, 7, 6, 5, 4, 3, 2, 1); }"
+
+assert 8 "add_ptr(p, a) { *p = *p + a; return 0; } main() { a = 5; add_ptr(&a, 3); return a; }"
+
 echo
 echo OK

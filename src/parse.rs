@@ -10,6 +10,10 @@ pub enum UnOpKind {
     Neg,
     /// expr
     ExprStmt,
+    /// &
+    Addr,
+    /// *
+    Deref,
 }
 
 pub type UnOp = Annot<UnOpKind>;
@@ -453,12 +457,18 @@ impl Parser {
     }
 
     /// unary = ( "+" | "-" )? primary
+    ///       | "*" unary
+    ///       | "&" unary
     pub fn unary(&mut self) -> Result<Node> {
         let tok_loc = self.tok().loc;
         let node = if self.consume(b"+") {
             Node::with_unop(UnOp::new(UnOpKind::Pos, tok_loc), self.primary()?)
         } else if self.consume(b"-") {
             Node::with_unop(UnOp::new(UnOpKind::Neg, tok_loc), self.primary()?)
+        } else if self.consume(b"*") {
+            Node::with_unop(UnOp::new(UnOpKind::Deref, tok_loc), self.unary()?)
+        } else if self.consume(b"&") {
+            Node::with_unop(UnOp::new(UnOpKind::Addr, tok_loc), self.unary()?)
         } else {
             self.primary()?
         };

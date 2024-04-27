@@ -80,21 +80,27 @@ impl Generator {
                 self.pop("rbp");
                 println!("  ret");
             }
-            NodeKind::UnOp { op, arg } => {
-                self.gen(*arg)?;
-                match op.value {
-                    UnOpKind::Pos => {}
-                    UnOpKind::Neg => {
-                        self.pop("rax");
-                        println!("  neg %rax");
-                        self.push("rax");
-                    }
-                    UnOpKind::ExprStmt => {
-                        self.stack_len -= 1;
-                        println!("  add ${}, %rsp", MEMORY_SIZE);
-                    }
+            NodeKind::UnOp { op, arg } => match op.value {
+                UnOpKind::Pos => self.gen(*arg)?,
+                UnOpKind::Neg => {
+                    self.gen(*arg)?;
+                    self.pop("rax");
+                    println!("  neg %rax");
+                    self.push("rax");
                 }
-            }
+                UnOpKind::ExprStmt => {
+                    self.gen(*arg)?;
+                    self.stack_len -= 1;
+                    println!("  add ${}, %rsp", MEMORY_SIZE);
+                }
+                UnOpKind::Addr => self.lval_gen(*arg)?,
+                UnOpKind::Deref => {
+                    self.gen(*arg)?;
+                    self.pop("rdi");
+                    println!("  mov (%rdi), %rax");
+                    self.push("rax");
+                }
+            },
             NodeKind::BinOp { op, left, right } => {
                 match op.value {
                     BinOpKind::Assign => {
@@ -338,6 +344,7 @@ impl Generator {
                 println!("  push %rdi");
                 Ok(())
             }
+            NodeKind::UnOp { op, arg } if op.value == UnOpKind::Deref => self.gen(*arg),
             _ => Err(Error {
                 value: ErrorKind::Error("not lvalue"),
                 loc: node.loc,

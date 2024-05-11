@@ -1,11 +1,9 @@
 /// Executes the main logic.
 ///
-/// * args - command-line arguments
+/// * `_args` - Command-line arguments.
 ///
-/// # Return
-///
+/// # Returns
 /// Exit code.
 pub fn main(_args: Vec<String>) -> u8 {
-    println!("Hello Wordl!");
     0
 }

@@ -1,22 +1,92 @@
 use std::{
+    collections::VecDeque,
     ffi::OsStr,
     fs::File,
     hash::{Hash, Hasher},
-    io::Result,
+    io::{Result, Write},
     path::{Path, PathBuf},
     process::Command,
+    result::Result as StdResult,
     str,
     time::SystemTime,
 };
 
+/// Default output path of the program.
+const OUTPUT_PATH: &str = "./a.out";
+
 /// Executes the main logic.
 ///
-/// * `_args` - Command-line arguments.
+/// * `args` - Command-line arguments.
 ///
 /// # Returns
 /// Exit code.
-pub fn main(_args: Vec<String>) -> u8 {
+pub fn main(args: impl IntoIterator<Item = String>) -> u8 {
+    let mut args: VecDeque<_> = args.into_iter().collect();
+    if args.len() != 1 {
+        eprintln!("one input is required");
+        return 1;
+    }
+    // This unwrapping always success because of checking before.
+    let input = args.pop_back().unwrap();
+
+    let (n, _input) = match consume_digit(input.as_bytes()) {
+        (Err(_), _) => {
+            eprintln!("input must be a number.");
+            return 1;
+        }
+        (Ok(n), input) => {
+            if input.len() != 0 {
+                eprintln!("input must be a number.");
+                return 1;
+            }
+            (n, input)
+        }
+    };
+
+    let asm_path = match mktemp() {
+        Ok(path) => path,
+        Err(e) => {
+            eprintln!("fails creating a temp file: {}", e);
+            return 1;
+        }
+    };
+
+    let mut asm_file = File::create(&asm_path).unwrap();
+    codegen(n, &mut asm_file).unwrap();
+
+    assemble(&asm_path, OUTPUT_PATH).unwrap();
+
     0
+}
+
+fn codegen<W>(n: usize, writer: &mut W) -> Result<()>
+where
+    W: Write,
+{
+    writeln!(writer, ".global main")?;
+    writeln!(writer, "main:")?;
+    writeln!(writer, "  mov ${}, %rax", n)?;
+    writeln!(writer, "  ret")?;
+    Ok(())
+}
+
+/// Consumes input as digit from head and returns read digit if the head is digit
+/// and remains of input.
+/// Otherwise, returns error and the input.
+///
+/// * input - Decoded input string.
+fn consume_digit(mut input: &[u8]) -> (StdResult<usize, ()>, &[u8]) {
+    if input.len() == 0 || !input[0].is_ascii_digit() {
+        return (Err(()), input);
+    }
+
+    let mut ret = 0;
+    while input.len() != 0 && input[0].is_ascii_digit() {
+        ret *= 10;
+        ret += (input[0] - b'0') as usize;
+        input = &input[1..];
+    }
+    (Ok(ret), input)
 }
 
 /// Creates a temp file in the directory determined by [temp_dir()][std::env::temp_dir()].
@@ -83,6 +153,8 @@ mod test {
         time::SystemTime,
     };
 
+    use crate::OUTPUT_PATH;
+
     /// Directory for files used during testing.
     const TEST_DIR: &str = "tmp";
 
@@ -131,5 +203,20 @@ main:
             fs::remove_file(test_dir).unwrap();
         }
         fs::create_dir_all(test_dir).unwrap();
+    }
+
+    #[test]
+    fn imed_value_test() {
+        let mut haser = DefaultHasher::new();
+        SystemTime::now().hash(&mut haser);
+        let exit_code = haser.finish() as u8;
+
+        // Checks if compiling successes.
+        assert_eq!(crate::main(vec![format!("{}", exit_code)]), 0);
+
+        let mut process = Command::new(OUTPUT_PATH).spawn().unwrap();
+        let exit_status = process.wait().unwrap();
+
+        assert_eq!(exit_status.code().unwrap(), exit_code as i32);
     }
 }

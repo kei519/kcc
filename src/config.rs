@@ -101,7 +101,7 @@ fn usage(in_stderr: bool) {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use crate::config::Config;
 
     #[test]

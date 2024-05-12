@@ -157,7 +157,7 @@ fn rand() -> u64 {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use std::{
         fs::{self, File},
         hash::{DefaultHasher, Hash, Hasher},

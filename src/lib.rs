@@ -1,3 +1,5 @@
+mod config;
+
 use std::{
     collections::VecDeque,
     ffi::OsStr,

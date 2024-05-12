@@ -1,7 +1,6 @@
 mod config;
 
 use std::{
-    collections::VecDeque,
     ffi::OsStr,
     fs::File,
     hash::{Hash, Hasher},
@@ -13,11 +12,13 @@ use std::{
     time::SystemTime,
 };
 
+use config::Config;
+
 /// Name of this program.
 const PROG_NAME: &str = "kcc";
 
 /// Default output path of the program.
-const OUTPUT_PATH: &str = "./a.out";
+const DEFAULT_OUTPUT: &str = "./a.out";
 
 /// Executes the main logic.
 ///
@@ -26,15 +27,12 @@ const OUTPUT_PATH: &str = "./a.out";
 /// # Returns
 /// Exit code.
 pub fn main(args: impl IntoIterator<Item = String>) -> u8 {
-    let mut args: VecDeque<_> = args.into_iter().collect();
-    if args.len() != 1 {
-        eprintln!("one input is required");
-        return 1;
-    }
-    // This unwrapping always success because of checking before.
-    let input = args.pop_back().unwrap();
+    let config = match Config::new(args) {
+        Ok(config) => config,
+        Err(_) => return 1,
+    };
 
-    let (n, _input) = match consume_digit(input.as_bytes()) {
+    let (n, _input) = match consume_digit(config.input().as_bytes()) {
         (Err(_), _) => {
             eprintln!("input must be a number.");
             return 1;
@@ -59,7 +57,13 @@ pub fn main(args: impl IntoIterator<Item = String>) -> u8 {
     let mut asm_file = File::create(&asm_path).unwrap();
     codegen(n, &mut asm_file).unwrap();
 
-    assemble(&asm_path, OUTPUT_PATH).unwrap();
+    assemble(
+        &asm_path,
+        config
+            .output_path()
+            .unwrap_or(&String::from(DEFAULT_OUTPUT)),
+    )
+    .unwrap();
 
     0
 }
@@ -163,7 +167,7 @@ mod test {
         time::SystemTime,
     };
 
-    use crate::OUTPUT_PATH;
+    use crate::DEFAULT_OUTPUT;
 
     /// Directory for files used during testing.
     const TEST_DIR: &str = "tmp";
@@ -224,7 +228,25 @@ main:
         // Checks if compiling successes.
         assert_eq!(crate::main(vec![format!("{}", exit_code)]), 0);
 
-        let mut process = Command::new(OUTPUT_PATH).spawn().unwrap();
+        let mut process = Command::new(DEFAULT_OUTPUT).spawn().unwrap();
+        let exit_status = process.wait().unwrap();
+
+        assert_eq!(exit_status.code().unwrap(), exit_code as i32);
+    }
+
+    #[test]
+    fn test_specified_output() {
+        let rand = crate::rand();
+        let test_dir = Path::new(TEST_DIR);
+        let output_path = test_dir.join(format!("kcc-{}", rand as u16));
+
+        let exit_code = crate::rand() as u8;
+
+        let args =
+            ["-o", output_path.to_str().unwrap(), &exit_code.to_string()].map(|arg| arg.into());
+        assert_eq!(crate::main(args), 0);
+
+        let mut process = Command::new(output_path).spawn().unwrap();
         let exit_status = process.wait().unwrap();
 
         assert_eq!(exit_status.code().unwrap(), exit_code as i32);

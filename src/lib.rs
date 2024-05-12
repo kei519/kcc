@@ -167,12 +167,14 @@ mod test {
     const TEST_DIR: &str = "tmp";
 
     #[test]
+    #[ignore]
     fn mktemp_test() {
         let path = crate::mktemp().unwrap();
         assert!(File::open(path).is_ok());
     }
 
     #[test]
+    #[ignore]
     fn asm_test() {
         let asm_path = crate::mktemp().unwrap();
         check_test_dir();

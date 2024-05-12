@@ -1,4 +1,5 @@
 mod config;
+mod util;
 
 use std::{
     ffi::OsStr,

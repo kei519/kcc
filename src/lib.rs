@@ -11,6 +11,9 @@ use std::{
     time::SystemTime,
 };
 
+/// Name of this program.
+const PROG_NAME: &str = "kcc";
+
 /// Default output path of the program.
 const OUTPUT_PATH: &str = "./a.out";
 
@@ -96,7 +99,6 @@ fn consume_digit(mut input: &[u8]) -> (StdResult<usize, ()>, &[u8]) {
 /// # Returns
 /// The path to the file as [PathBuf].
 fn mktemp() -> Result<PathBuf> {
-    const PREFIX: &str = "kcc-";
     const TABLE: &[u8; 62] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
     let mut hasher = std::hash::DefaultHasher::new();
@@ -109,7 +111,7 @@ fn mktemp() -> Result<PathBuf> {
         rand[i] = TABLE[index as usize];
     }
 
-    let file_name = format!("{}{}", PREFIX, str::from_utf8(&rand).unwrap());
+    let file_name = format!("{}-{}", PROG_NAME, str::from_utf8(&rand).unwrap());
     let path = std::env::temp_dir().join(file_name);
     File::create_new(&path)?;
 

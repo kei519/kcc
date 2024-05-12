@@ -5,7 +5,7 @@ use std::{
     hash::{Hash, Hasher},
     io::{Result, Write},
     path::{Path, PathBuf},
-    process::Command,
+    process::{self, Command},
     result::Result as StdResult,
     str,
     time::SystemTime,
@@ -101,17 +101,14 @@ fn consume_digit(mut input: &[u8]) -> (StdResult<usize, ()>, &[u8]) {
 fn mktemp() -> Result<PathBuf> {
     const TABLE: &[u8; 62] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
-    let mut hasher = std::hash::DefaultHasher::new();
-    SystemTime::now().hash(&mut hasher);
-    let hash = hasher.finish();
-
-    let mut rand: Vec<_> = b"XXXXXX".into();
-    for i in 0..rand.len() {
-        let index = ((hash >> i) as u8) % TABLE.len() as u8;
-        rand[i] = TABLE[index as usize];
+    let rand = rand();
+    let mut suffix: Vec<_> = b"XXXXXX".into();
+    for i in 0..suffix.len() {
+        let index = ((rand >> i) as u8) % TABLE.len() as u8;
+        suffix[i] = TABLE[index as usize];
     }
 
-    let file_name = format!("{}-{}", PROG_NAME, str::from_utf8(&rand).unwrap());
+    let file_name = format!("{}-{}", PROG_NAME, str::from_utf8(&suffix).unwrap());
     let path = std::env::temp_dir().join(file_name);
     File::create_new(&path)?;
 
@@ -144,6 +141,15 @@ fn assemble(asm_path: impl AsRef<Path>, output_path: impl AsRef<Path>) -> Result
     Ok(())
 }
 
+/// Generates a random number from the time and the process id.
+/// It may be unique in at least on a machine.
+fn rand() -> u64 {
+    let mut hasher = std::hash::DefaultHasher::new();
+    SystemTime::now().hash(&mut hasher);
+    process::id().hash(&mut hasher);
+    hasher.finish()
+}
+
 #[cfg(test)]
 mod test {
     use std::{
@@ -173,9 +179,7 @@ mod test {
         let output_path = Path::new(TEST_DIR).join("asm_test");
 
         // Determins a random exit code.
-        let mut hasher = DefaultHasher::new();
-        SystemTime::now().hash(&mut hasher);
-        let exit_code = hasher.finish() as u8;
+        let exit_code = crate::rand() as u8;
 
         let mut asm_file = File::create(&asm_path).unwrap();
         writeln!(

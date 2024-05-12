@@ -15,10 +15,10 @@ use std::{
 use config::Config;
 
 /// Name of this program.
-const PROG_NAME: &str = "kcc";
+pub const PROG_NAME: &str = "kcc";
 
 /// Default output path of the program.
-const DEFAULT_OUTPUT: &str = "./a.out";
+pub const DEFAULT_OUTPUT: &str = "./a.out";
 
 /// Executes the main logic.
 ///
@@ -158,16 +158,7 @@ fn rand() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        fs::{self, File},
-        hash::{DefaultHasher, Hash, Hasher},
-        io::Write,
-        path::Path,
-        process::Command,
-        time::SystemTime,
-    };
-
-    use crate::DEFAULT_OUTPUT;
+    use std::{fs::File, io::Write, path::Path, process::Command};
 
     /// Directory for files used during testing.
     const TEST_DIR: &str = "tmp";
@@ -183,7 +174,6 @@ mod tests {
     #[ignore]
     fn asm_test() {
         let asm_path = crate::mktemp().unwrap();
-        check_test_dir();
         let output_path = Path::new(TEST_DIR).join("asm_test");
 
         // Determins a random exit code.
@@ -201,50 +191,6 @@ main:
         .unwrap();
 
         crate::assemble(asm_path, &output_path).unwrap();
-
-        let mut process = Command::new(output_path).spawn().unwrap();
-        let exit_status = process.wait().unwrap();
-
-        assert_eq!(exit_status.code().unwrap(), exit_code as i32);
-    }
-
-    /// Checks if [TEST_DIR] is a valid directory.
-    fn check_test_dir() {
-        let test_dir = Path::new(TEST_DIR);
-        if test_dir.is_dir() {
-            return;
-        } else if test_dir.exists() {
-            fs::remove_file(test_dir).unwrap();
-        }
-        fs::create_dir_all(test_dir).unwrap();
-    }
-
-    #[test]
-    fn imed_value_test() {
-        let mut haser = DefaultHasher::new();
-        SystemTime::now().hash(&mut haser);
-        let exit_code = haser.finish() as u8;
-
-        // Checks if compiling successes.
-        assert_eq!(crate::main(vec![format!("{}", exit_code)]), 0);
-
-        let mut process = Command::new(DEFAULT_OUTPUT).spawn().unwrap();
-        let exit_status = process.wait().unwrap();
-
-        assert_eq!(exit_status.code().unwrap(), exit_code as i32);
-    }
-
-    #[test]
-    fn test_specified_output() {
-        let rand = crate::rand();
-        let test_dir = Path::new(TEST_DIR);
-        let output_path = test_dir.join(format!("kcc-{}", rand as u16));
-
-        let exit_code = crate::rand() as u8;
-
-        let args =
-            ["-o", output_path.to_str().unwrap(), &exit_code.to_string()].map(|arg| arg.into());
-        assert_eq!(crate::main(args), 0);
 
         let mut process = Command::new(output_path).spawn().unwrap();
         let exit_status = process.wait().unwrap();

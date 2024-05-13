@@ -1,5 +1,6 @@
 mod config;
 mod error;
+mod tokenize;
 mod util;
 
 use std::{
@@ -9,12 +10,12 @@ use std::{
     io::{Result, Write},
     path::{Path, PathBuf},
     process::{self, Command},
-    result::Result as StdResult,
     str,
     time::SystemTime,
 };
 
 use config::Config;
+use tokenize::{TokenKind, Tokenizer};
 
 /// Name of this program.
 pub const PROG_NAME: &str = "kcc";
@@ -34,17 +35,25 @@ pub fn main(args: impl IntoIterator<Item = String>) -> u8 {
         Err(_) => return 1,
     };
 
-    let (n, _input) = match consume_digit(config.input().as_bytes()) {
-        (Err(_), _) => {
+    let mut tokenizer = Tokenizer::new(config);
+
+    let n = match tokenizer.str_to_num() {
+        Err(_) => {
             eprintln!("input must be a number.");
             return 1;
         }
-        (Ok(n), input) => {
-            if input.len() != 0 {
+        Ok(n) => {
+            if tokenizer.num_rem() != 0 {
                 eprintln!("input must be a number.");
                 return 1;
             }
-            (n, input)
+            match n.kind {
+                TokenKind::Num(n) => n,
+                _ => {
+                    eprintln!("input must be a number.");
+                    return 1;
+                }
+            }
         }
     };
 
@@ -61,7 +70,8 @@ pub fn main(args: impl IntoIterator<Item = String>) -> u8 {
 
     assemble(
         &asm_path,
-        config
+        tokenizer
+            .config
             .output_path()
             .unwrap_or(&String::from(DEFAULT_OUTPUT)),
     )
@@ -79,25 +89,6 @@ where
     writeln!(writer, "  mov ${}, %rax", n)?;
     writeln!(writer, "  ret")?;
     Ok(())
-}
-
-/// Consumes input as digit from head and returns read digit if the head is digit
-/// and remains of input.
-/// Otherwise, returns error and the input.
-///
-/// * input - Decoded input string.
-fn consume_digit(mut input: &[u8]) -> (StdResult<usize, ()>, &[u8]) {
-    if input.len() == 0 || !input[0].is_ascii_digit() {
-        return (Err(()), input);
-    }
-
-    let mut ret = 0;
-    while input.len() != 0 && input[0].is_ascii_digit() {
-        ret *= 10;
-        ret += (input[0] - b'0') as usize;
-        input = &input[1..];
-    }
-    (Ok(ret), input)
 }
 
 /// Creates a temp file in the directory determined by [temp_dir()][std::env::temp_dir()].

@@ -4,23 +4,18 @@ pub mod util;
 
 use config::Config;
 use tokenize::Tokenizer;
+use util::Result;
 
 /// Executes the main logic.
+/// Returns an [Error][util::Error] when occurs.
 ///
 /// * args - command-line arguments
-///
-/// # Return
-///
-/// Exit code.
-pub fn main(args: Vec<String>) -> u8 {
+pub fn main<T>(args: impl IntoIterator<Item = T>) -> Result<()>
+where
+    T: Into<String>,
+{
     let config = Config::new(args);
     let tokenizer = Tokenizer::new(config);
-    match tokenizer.tokenize() {
-        Ok(_) => {}
-        Err(e) => {
-            e.show();
-            return 1;
-        }
-    }
-    0
+    tokenizer.tokenize()?;
+    Ok(())
 }

@@ -1,3 +1,5 @@
+pub mod config;
+
 /// Executes the main logic.
 ///
 /// * args - command-line arguments

@@ -134,6 +134,9 @@ assert 4 "int fn(int a, int b, int c, int d, int e, int f, int g, int h) { retur
 # ptr test
 assert 8 "int add_ptr(int *p, int a) { *p = *p + a; return 0; } int main() { int a; a = 5; add_ptr(&a, 3); return a; }"
 assert 59 "int main() { int a; int *p; int **pp; pp = &p; p = &a; a = 0; *p = *p + 49; **pp = **pp + 10; return a; }"
+assert 100 "int main() { int a = 100; return *&a; }"
+assert 20 "int main() { int a = 10; int b = 20; return *(&a-8);}"
+assert 10 "int main() { int a = 10; int b = 20; return *(&b+8);}"
 
 # declaration test
 assert 47 "int main() { int a = 87; return a - 40; }"

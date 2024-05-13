@@ -458,6 +458,15 @@ impl Parser {
         Ok(())
     }
 
+    pub fn read_type_suffix(&mut self, base: Type) -> Result<Type> {
+        if !self.consume(b"[") {
+            return Ok(base);
+        }
+        let sz = self.expect_number()?;
+        self.expect(b"]")?;
+        Ok(Type::with_array(base, sz as usize))
+    }
+
     /// basetype = "int" "*"*
     fn basetype(&mut self) -> Result<Type> {
         let loc = self.tok().loc;
@@ -614,11 +623,12 @@ impl Parser {
         Ok(ret)
     }
 
-    /// declaration = basetype ident ("=" expr)? ";"
+    /// declaration = basetype ident ( "[" num "]" )* ("=" expr)? ";"
     pub fn declaration(&mut self) -> Result<Node> {
         let loc = self.tok().loc;
         let ty = self.basetype()?;
         let name = self.consume_ident()?;
+        let ty = self.read_type_suffix(ty)?;
         self.add_var(name, ty.clone());
 
         {

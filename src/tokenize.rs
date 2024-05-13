@@ -78,9 +78,9 @@ impl Tokenizer {
         const SEP_KW: [&'static [u8]; 5] = [b"return", b"while", b"else", b"for", b"if"];
 
         /// Keywords other than above.
-        const KW: [&'static [u8]; 18] = [
+        const KW: [&'static [u8]; 20] = [
             b"==", b"!=", b"<=", b">=", b">", b"<", b"+", b"-", b"*", b"/", b"(", b")", b";", b"=",
-            b"{", b"}", b",", b"&",
+            b"{", b"}", b",", b"&", b"[", b"]",
         ];
 
         let mut tokens = vec![];

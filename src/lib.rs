@@ -1,5 +1,9 @@
 pub mod config;
+pub mod tokenize;
 pub mod util;
+
+use config::Config;
+use tokenize::Tokenizer;
 
 /// Executes the main logic.
 ///
@@ -8,7 +12,15 @@ pub mod util;
 /// # Return
 ///
 /// Exit code.
-pub fn main(_args: Vec<String>) -> u8 {
-    println!("Hello Wordl!");
+pub fn main(args: Vec<String>) -> u8 {
+    let config = Config::new(args);
+    let tokenizer = Tokenizer::new(config);
+    match tokenizer.tokenize() {
+        Ok(_) => {}
+        Err(e) => {
+            e.show();
+            return 1;
+        }
+    }
     0
 }

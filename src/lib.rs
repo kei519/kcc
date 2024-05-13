@@ -1,4 +1,5 @@
 pub mod config;
+pub mod util;
 
 /// Executes the main logic.
 ///

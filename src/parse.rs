@@ -27,10 +27,16 @@ impl UnOp {
 /// Respresents binary operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BinOpKind {
-    /// +
+    /// num + num
     Add,
-    /// -
+    /// ptr + num or num + ptr
+    PtrAdd,
+    /// num - num
     Sub,
+    /// ptr - num
+    PtrSub,
+    /// ptr - ptr
+    PtrDiff,
     /// *
     Mul,
     /// /

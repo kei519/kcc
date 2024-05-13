@@ -1,6 +1,8 @@
+use std::str::pattern::Pattern;
+
 use crate::{
     config::Config,
-    tokenize::Token,
+    tokenize::{Token, TokenKind},
     util::{Annot, Error, Loc, Result},
 };
 
@@ -20,15 +22,53 @@ impl Parser {
         }
     }
 
-    pub fn parse(self) -> Result<Vec<Node>> {
-        Err(Error::from_compilation(
-            "cannot compile anything.".into(),
-            self.config.input,
-            Loc::new(0, 1),
-        ))
+    fn tok(&self) -> &Token {
+        &self.tokens[self.pos]
+    }
+
+    fn forward(&mut self) -> bool {
+        if self.tok().data != TokenKind::Eof {
+            self.pos += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn parse(self) -> Result<Node> {
+        let loc = self.tok().loc;
+        let TokenKind::Num(num) = self.tok().data else {
+            return Err(Error::from_compilation(
+                "integer is required".into(),
+                self.config.input,
+                self.tok().loc,
+            ));
+        };
+        self.forward();
+        if !matches!(self.tok().data, TokenKind::Eof) {
+            return Err(Error::from_compilation(
+                "only integer is accepted".into(),
+                self.config.input,
+                self.tok().loc,
+            ));
+        }
+        Ok(Node::from_num(num, loc))
     }
 }
 
-pub enum NodeKind {}
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum NodeKind {
+    /// Integer.
+    Num(usize),
+}
 
 pub type Node = Annot<NodeKind>;
+
+impl Node {
+    fn from_num(num: usize, loc: Loc) -> Self {
+        Self {
+            data: NodeKind::Num(num),
+            loc,
+        }
+    }
+}

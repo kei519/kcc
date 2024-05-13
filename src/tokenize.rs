@@ -67,6 +67,12 @@ impl Tokenizer {
         }
     }
 
+    pub fn tokenize(mut self) -> Result<(Vec<Token>, Config)> {
+        let mut ret = vec![];
+        ret.push(self.str_to_num()?);
+        Ok((ret, self.config))
+    }
+
     /// Converts input as digit from head and returns read digit as [Token] if the head is digit
     /// and remains of input.
     /// Otherwise, returns error and the input.

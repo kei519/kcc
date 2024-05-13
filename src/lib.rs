@@ -15,7 +15,7 @@ use std::{
 };
 
 use config::Config;
-use tokenize::{TokenKind, Tokenizer};
+use tokenize::{Token, TokenKind, Tokenizer};
 
 /// Name of this program.
 pub const PROG_NAME: &str = "kcc";
@@ -36,24 +36,11 @@ pub fn main(args: impl IntoIterator<Item = String>) -> u8 {
     };
 
     let mut tokenizer = Tokenizer::new(config);
-
-    let n = match tokenizer.str_to_num() {
-        Err(_) => {
-            eprintln!("input must be a number.");
+    let (tokens, config) = match tokenizer.tokenize() {
+        Ok(ret) => ret,
+        Err(e) => {
+            e.show();
             return 1;
-        }
-        Ok(n) => {
-            if tokenizer.num_rem() != 0 {
-                eprintln!("input must be a number.");
-                return 1;
-            }
-            match n.kind {
-                TokenKind::Num(n) => n,
-                _ => {
-                    eprintln!("input must be a number.");
-                    return 1;
-                }
-            }
         }
     };
 
@@ -66,12 +53,11 @@ pub fn main(args: impl IntoIterator<Item = String>) -> u8 {
     };
 
     let mut asm_file = File::create(&asm_path).unwrap();
-    codegen(n, &mut asm_file).unwrap();
+    codegen(tokens, &mut asm_file).unwrap();
 
     assemble(
         &asm_path,
-        tokenizer
-            .config
+        config
             .output_path()
             .unwrap_or(&String::from(DEFAULT_OUTPUT)),
     )
@@ -80,10 +66,12 @@ pub fn main(args: impl IntoIterator<Item = String>) -> u8 {
     0
 }
 
-fn codegen<W>(n: usize, writer: &mut W) -> Result<()>
+fn codegen<W>(tokens: Vec<Token>, writer: &mut W) -> Result<()>
 where
     W: Write,
 {
+    if tokens.len() != 1 {}
+
     writeln!(writer, ".global main")?;
     writeln!(writer, "main:")?;
     writeln!(writer, "  mov ${}, %rax", n)?;

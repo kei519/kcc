@@ -53,6 +53,11 @@ impl Config {
                 continue;
             }
 
+            // Check "--help" option.
+            if arg.starts_with("-h") || arg.starts_with("--help") {
+                usage(false)?;
+            }
+
             // Non-option arg is the input.
             // Error if input is already specified.
             if input.is_some() {

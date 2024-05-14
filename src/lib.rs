@@ -1,4 +1,5 @@
 mod config;
+mod util;
 
 use config::Config;
 

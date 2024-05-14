@@ -1,4 +1,8 @@
 fn main() -> std::process::ExitCode {
     let args = std::env::args().skip(1);
-    kcc::main(args).into()
+    match kcc::main(args) {
+        Ok(_) => 0,
+        Err(_) => 1,
+    }
+    .into()
 }

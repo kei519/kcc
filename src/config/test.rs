@@ -45,3 +45,9 @@ fn test_concat_output() {
 fn test_two_output() {
     assert_eq!(Config::new(["-oa.exe", "-o", "hoge"]), Err(true));
 }
+
+#[test]
+fn test_help() {
+    assert_eq!(Config::new(["-oa.out", "hoge", "-h"]), Err(false));
+    assert_eq!(Config::new(["--help", "-o", "a.exe"]), Err(false));
+}

@@ -5,7 +5,10 @@
 /// # Return
 ///
 /// Exit code.
-pub fn main(_args: Vec<String>) -> u8 {
+pub fn main<T>(_args: impl IntoIterator<Item = T>) -> u8
+where
+    T: Into<String>,
+{
     println!("Hello Wordl!");
     0
 }

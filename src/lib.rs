@@ -9,6 +9,6 @@ pub fn main<T>(_args: impl IntoIterator<Item = T>) -> u8
 where
     T: Into<String>,
 {
-    println!("Hello Wordl!");
+    println!("Hello World!");
     0
 }

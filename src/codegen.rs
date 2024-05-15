@@ -53,6 +53,11 @@ fn gen(node: Node, file: &mut File) -> io::Result<()> {
             match op {
                 BinOpKind::Add => writeln!(file, "  add %rdi, %rax")?,
                 BinOpKind::Sub => writeln!(file, "  sub %rdi, %rax")?,
+                BinOpKind::Mul => writeln!(file, "  imul %rdi, %rax")?,
+                BinOpKind::Div => {
+                    writeln!(file, "  cqo")?;
+                    writeln!(file, "  idiv %rdi")?;
+                }
             }
             writeln!(file, "  push %rax")?;
         }

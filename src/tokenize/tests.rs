@@ -97,3 +97,54 @@ fn test_expr_with_plus_minus() {
     assert_eq!(tokens[5].data, TokenKind::Eof);
     assert_eq!(tokens[5].loc, Loc::at(14));
 }
+
+#[test]
+fn test_sepkw() {
+    let input = "return 42;";
+    let tokens = Tokenizer::new(input).tokenize().unwrap();
+    assert_eq!(tokens.len(), 4);
+
+    assert_eq!(tokens[0].data, TokenKind::Reserved("return"));
+    assert_eq!(tokens[0].loc, Loc::range(0, 6));
+
+    assert_eq!(tokens[1].data, TokenKind::Num(42));
+    assert_eq!(tokens[1].loc, Loc::range(7, 9));
+
+    assert_eq!(tokens[2].data, TokenKind::Reserved(";"));
+    assert_eq!(tokens[2].loc, Loc::range(9, 10));
+
+    assert_eq!(tokens[3].data, TokenKind::Eof);
+    assert_eq!(tokens[3].loc, Loc::at(10));
+}
+
+#[test]
+fn test_sepkw_with_sep() {
+    let input = "return(12)\n;";
+    let tokens = Tokenizer::new(input).tokenize().unwrap();
+    assert_eq!(tokens.len(), 6);
+
+    assert_eq!(tokens[0].data, TokenKind::Reserved("return"));
+    assert_eq!(tokens[0].loc, Loc::range(0, 6));
+
+    assert_eq!(tokens[1].data, TokenKind::Reserved("("));
+    assert_eq!(tokens[1].loc, Loc::range(6, 7));
+
+    assert_eq!(tokens[2].data, TokenKind::Num(12));
+    assert_eq!(tokens[2].loc, Loc::range(7, 9));
+
+    assert_eq!(tokens[3].data, TokenKind::Reserved(")"));
+    assert_eq!(tokens[3].loc, Loc::range(9, 10));
+
+    assert_eq!(tokens[4].data, TokenKind::Reserved(";"));
+    assert_eq!(tokens[4].loc, Loc::at(11));
+
+    assert_eq!(tokens[5].data, TokenKind::Eof);
+    assert_eq!(tokens[5].loc, Loc::at(12));
+}
+
+#[test]
+fn test_sepkw_not_separated() {
+    let input = "return42;";
+    let tokens = Tokenizer::new(input).tokenize();
+    assert!(tokens.is_err());
+}

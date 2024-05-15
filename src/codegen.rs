@@ -33,7 +33,6 @@ pub fn codegen(nodes: Vec<Node>, asm_path: impl AsRef<Path>) -> Result<()> {
     }
 
     // Write the epilouge.
-    writeln!(asm_file, "  ret").map_err(into_err)?;
 
     Ok(())
 }
@@ -47,12 +46,18 @@ fn gen(node: Node, file: &mut File) -> io::Result<()> {
         }
         NodeKind::UnOp { op, operand } => {
             gen(*operand, file)?;
-            writeln!(file, "  pop %rax")?;
             match op {
                 UnOpKind::Pos => {}
-                UnOpKind::Neg => writeln!(file, "  neg %rax")?,
+                UnOpKind::Neg => {
+                    writeln!(file, "  pop %rax")?;
+                    writeln!(file, "  neg %rax")?;
+                    writeln!(file, "  push %rax")?;
+                }
+                UnOpKind::Return => {
+                    writeln!(file, "  pop %rax")?;
+                    writeln!(file, "  ret")?;
+                }
             }
-            writeln!(file, "  push %rax")?;
         }
         NodeKind::BinOp { op, lhs, rhs } => {
             gen(*lhs, file)?;

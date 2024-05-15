@@ -1,5 +1,5 @@
 use crate::{
-    parse::{BinOpKind, Node, NodeKind},
+    parse::{BinOpKind, Node, NodeKind, UnOpKind},
     util::{into_err, Error, Result},
 };
 
@@ -43,6 +43,15 @@ fn gen(node: Node, file: &mut File) -> io::Result<()> {
     match node.data {
         NodeKind::Num(num) => {
             writeln!(file, "  mov ${}, %rax", num)?;
+            writeln!(file, "  push %rax")?;
+        }
+        NodeKind::UnOp { op, operand } => {
+            gen(*operand, file)?;
+            writeln!(file, "  pop %rax")?;
+            match op {
+                UnOpKind::Pos => {}
+                UnOpKind::Neg => writeln!(file, "  neg %rax")?,
+            }
             writeln!(file, "  push %rax")?;
         }
         NodeKind::BinOp { op, lhs, rhs } => {

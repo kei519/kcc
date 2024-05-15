@@ -6,7 +6,10 @@ mod util;
 
 use config::Config;
 use tokenize::Tokenizer;
-use util::{Error, Result};
+use util::{assemble, into_err, mktemp, Error, Result};
+
+/// The name of this program.
+const PROG_NAME: &str = "kcc";
 
 /// The default output file name.
 const DEFAULT_OUTPUT: &str = "a.out";
@@ -36,7 +39,12 @@ where
     let parser = parse::Parser::new(input, tokens);
     let nodes = parser.parse()?;
 
-    codegen::codegen(nodes, config.out_path.unwrap_or(DEFAULT_OUTPUT.into()))?;
+    // Generate assembly.
+    let asm_path = mktemp().map_err(into_err)?;
+    codegen::codegen(nodes, &asm_path)?;
+
+    // Assemble the assembly.
+    assemble(asm_path, config.out_path.unwrap_or(DEFAULT_OUTPUT.into()))?;
 
     Ok(())
 }

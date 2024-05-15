@@ -1,39 +1,35 @@
 use crate::{
     parse::{Node, NodeKind},
-    util::{Error, Result},
+    util::{into_err, Error, Result},
 };
 
-use std::{
-    fs::File,
-    io::{self, Write as _},
-    path::Path,
-};
+use std::{fs::File, io::Write as _, path::Path};
 
-/// Generates assembly code for the given `nodes` and writes it to the file at `out_path`.
-pub fn codegen(nodes: Vec<Node>, out_path: impl AsRef<Path>) -> Result<()> {
-    let mut file = match File::create(&out_path) {
+/// Generates assembly code for the given `nodes` and writes it to the file at `asm_path`.
+pub fn codegen(nodes: Vec<Node>, asm_path: impl AsRef<Path>) -> Result<()> {
+    let mut asm_file = match File::create(&asm_path) {
         Ok(file) => file,
         Err(e) => {
             return Err(Error::Any(format!(
                 "{}: {}",
                 e,
-                out_path.as_ref().display()
+                asm_path.as_ref().display(),
             )))
         }
     };
 
     // Write the prolouge.
-    writeln!(file, ".global main").map_err(into_err)?;
-    writeln!(file, "main:").map_err(into_err)?;
+    writeln!(asm_file, ".global main").map_err(into_err)?;
+    writeln!(asm_file, "main:").map_err(into_err)?;
 
     // Write the body.
     for node in nodes {
-        gen(node, &mut file)?;
+        gen(node, &mut asm_file)?;
     }
 
     // Write the epilouge.
-    writeln!(file, "  pop %rax").map_err(into_err)?;
-    writeln!(file, "  ret").map_err(into_err)?;
+    writeln!(asm_file, "  pop %rax").map_err(into_err)?;
+    writeln!(asm_file, "  ret").map_err(into_err)?;
 
     Ok(())
 }
@@ -47,9 +43,4 @@ fn gen(node: Node, file: &mut File) -> Result<()> {
         }
     }
     Ok(())
-}
-
-/// Converts [io::Error] into [Error].
-fn into_err(e: io::Error) -> Error {
-    Error::IoError(e)
 }

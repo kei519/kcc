@@ -1,9 +1,16 @@
 use std::{
-    cmp,
+    cmp, env,
     fmt::Display,
+    fs::File,
+    hash::{DefaultHasher, Hash as _, Hasher as _},
     io,
     ops::{Add, AddAssign},
+    path::{Path, PathBuf},
+    process,
+    time::SystemTime,
 };
+
+use crate::PROG_NAME;
 
 /// Represents a location [`start`, `end`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -86,4 +93,57 @@ impl Display for Error {
             Self::Any(s) => f.write_str(s),
         }
     }
+}
+
+/// Assemble the given assemly code located at `asm_path` into a executable located at `out_path`.
+pub fn assemble(asm_path: impl AsRef<Path>, out_path: impl AsRef<Path>) -> Result<()> {
+    let output = process::Command::new("gcc")
+        .arg("-o")
+        .arg(out_path.as_ref())
+        .arg("-xassembler")
+        .arg(asm_path.as_ref())
+        .output()
+        .map_err(into_err)?;
+
+    if !output.status.success() {
+        return Err(Error::Any(format!(
+            "gcc failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+
+    Ok(())
+}
+
+/// Generates a temporary file and returns its path.
+pub fn mktemp() -> io::Result<PathBuf> {
+    /// The characters used in the file name.
+    const CHARS: &[u8; 62] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    /// The length of the random part of the file name.
+    const RAND_LEN: usize = 6;
+
+    // Generate a file name.
+    let rand = rand();
+    let suffix: String = (0..RAND_LEN)
+        .map(|i| CHARS[(rand >> (i * 8)) as usize % CHARS.len()] as char)
+        .collect();
+    let file_name = format!("{}-{}", PROG_NAME, suffix);
+
+    // Create a temporary file.
+    let path = env::temp_dir().join(file_name);
+    File::create_new(&path)?;
+    Ok(path)
+}
+
+/// Generates a [u64] random number using the current time and process ID.
+pub fn rand() -> u64 {
+    let mut hasher = DefaultHasher::new();
+    SystemTime::now().hash(&mut hasher);
+    process::id().hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Converts [io::Error] into [Error].
+pub fn into_err(e: io::Error) -> Error {
+    Error::IoError(e)
 }

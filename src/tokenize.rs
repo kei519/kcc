@@ -3,9 +3,14 @@ mod tests;
 
 use crate::util::{Annot, Error, Loc, Result};
 
-const KW: [&'static str; 13] = [
-    "==", "!=", "<=", ">=", "+", "-", "*", "/", "(", ")", "<", ">", ";",
+const KW: [&'static str; 20] = [
+    "==", "!=", "<=", ">=", "+", "-", "*", "/", "(", ")", "<", ">", ";", ",", ".", ":", "[", "]",
+    "{", "}",
 ];
+
+const SEP_KW: [&'static str; 1] = ["return"];
+
+const SEP: [u8; 10] = [b';', b',', b'.', b':', b'(', b')', b'[', b']', b'{', b'}'];
 
 pub struct Tokenizer {
     input: &'static str,
@@ -32,6 +37,22 @@ impl Tokenizer {
                 let end = self.pos;
                 ret.push(Token::with_num(num, Loc::range(start, end)));
                 continue;
+            }
+
+            for &kw in &SEP_KW {
+                if self.cur().starts_with(kw.as_bytes())
+                    && self.cur()[kw.len()..]
+                        .first()
+                        // The default value is `true`
+                        // because the keyword is at the end of the input.
+                        .map_or(true, |&c| c.is_ascii_whitespace() || SEP.contains(&c))
+                {
+                    let start = self.pos;
+                    self.pos += kw.len();
+                    let end = self.pos;
+                    ret.push(Token::with_reserved(kw, Loc::range(start, end)));
+                    continue 'main;
+                }
             }
 
             for &kw in &KW {

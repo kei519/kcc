@@ -209,11 +209,17 @@ impl Parser {
     }
 
     /// ```text
-    /// stmt = expr ";"
+    /// stmt = ( "return" )? expr ";"
     /// ```
     pub fn stmt(&mut self) -> Result<Node> {
-        let node = self.expr()?;
+        let loc = self.tok().loc;
+        let node = if self.consume("return") {
+            Node::with_unop(UnOpKind::Return, self.expr()?, loc)
+        } else {
+            self.expr()?
+        };
         self.expect(";")?;
+
         Ok(node)
     }
 }
@@ -225,6 +231,8 @@ pub enum UnOpKind {
     Pos,
     /// -
     Neg,
+    /// return
+    Return,
 }
 
 /// Represents a binary operator.

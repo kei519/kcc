@@ -6,7 +6,9 @@ mod util;
 
 use config::Config;
 use tokenize::Tokenizer;
-use util::{assemble, into_err, mktemp, Error, Result};
+use util::{assemble, into_err, Error, Result};
+
+pub use util::{mktemp, rand};
 
 /// The name of this program.
 const PROG_NAME: &str = "kcc";

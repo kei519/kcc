@@ -49,3 +49,18 @@ fn test6() {
 fn test7() {
     test!(4, "(3+5)/2");
 }
+
+#[test]
+fn test8() {
+    test!(10, "-10+20");
+}
+
+#[test]
+fn test9() {
+    test!(10, "- -10");
+}
+
+#[test]
+fn test10() {
+    test!(10, "- - +10");
+}

@@ -99,10 +99,26 @@ impl Parser {
     }
 
     /// ```text
-    /// mul = primary ( "*" mul | "/" mul )?
+    /// unary = ( ("+" | "-") unary ) | primary
+    /// ```
+    pub fn unary(&mut self) -> Result<Node> {
+        let loc = self.tok().loc;
+        if self.consume("+") {
+            let operand = self.unary()?;
+            Ok(Node::with_unop(UnOpKind::Pos, operand, loc))
+        } else if self.consume("-") {
+            let operand = self.unary()?;
+            Ok(Node::with_unop(UnOpKind::Neg, operand, loc))
+        } else {
+            self.primary()
+        }
+    }
+
+    /// ```text
+    /// mul = unary ( "*" mul | "/" mul )?
     /// ```
     pub fn mul(&mut self) -> Result<Node> {
-        let left = self.primary()?;
+        let left = self.unary()?;
 
         if self.consume("*") {
             let right = self.mul()?;
@@ -133,6 +149,15 @@ impl Parser {
     }
 }
 
+/// Represents a unary operator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UnOpKind {
+    /// +
+    Pos,
+    /// -
+    Neg,
+}
+
 /// Represents a binary operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BinOpKind {
@@ -151,6 +176,8 @@ pub enum BinOpKind {
 pub enum NodeKind {
     /// Integer.
     Num(usize),
+    /// Unary operator.
+    UnOp { op: UnOpKind, operand: Box<Node> },
     /// Binary operator.
     BinOp {
         op: BinOpKind,
@@ -166,6 +193,17 @@ impl Node {
         Self {
             data: NodeKind::Num(num),
             loc,
+        }
+    }
+
+    pub fn with_unop(op: UnOpKind, operand: Node, op_loc: Loc) -> Self {
+        let loc = op_loc + operand.loc;
+        Self {
+            data: NodeKind::UnOp {
+                op,
+                operand: Box::new(operand),
+            },
+            loc: loc,
         }
     }
 

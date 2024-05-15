@@ -216,7 +216,7 @@ impl Parser {
         let node = if self.consume("return") {
             Node::with_unop(UnOpKind::Return, self.expr()?, loc)
         } else {
-            self.expr()?
+            Node::with_unop(UnOpKind::Expr, self.expr()?, loc)
         };
         self.expect(";")?;
 
@@ -233,6 +233,8 @@ pub enum UnOpKind {
     Neg,
     /// return
     Return,
+    /// Expression statement.
+    Expr,
 }
 
 /// Represents a binary operator.

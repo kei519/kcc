@@ -3,6 +3,8 @@ mod tests;
 
 use crate::util::{Annot, Error, Loc, Result};
 
+const KW: [&'static str; 2] = ["+", "-"];
+
 pub struct Tokenizer {
     input: &'static str,
     pos: usize,
@@ -16,13 +18,28 @@ impl Tokenizer {
     pub fn tokenize(mut self) -> Result<Vec<Token>> {
         let mut ret = vec![];
 
-        while !self.cur().is_empty() {
+        'main: while !self.cur().is_empty() {
+            if self.cur()[0].is_ascii_whitespace() {
+                self.next();
+                continue;
+            }
+
             if self.cur()[0].is_ascii_digit() {
                 let start = self.pos;
                 let num = self.str_to_num();
                 let end = self.pos;
                 ret.push(Token::with_num(num, Loc::range(start, end)));
                 continue;
+            }
+
+            for &kw in &KW {
+                if self.cur().starts_with(kw.as_bytes()) {
+                    let start = self.pos;
+                    self.pos += kw.len();
+                    let end = self.pos;
+                    ret.push(Token::with_reserved(kw, Loc::range(start, end)));
+                    continue 'main;
+                }
             }
 
             return Err(Error::CompileError {
@@ -72,6 +89,8 @@ impl Tokenizer {
 pub enum TokenKind {
     /// Numeric literal.
     Num(usize),
+    // Keyword.
+    Reserved(&'static str),
     /// Represents the end of file.
     Eof,
 }
@@ -82,6 +101,13 @@ impl Token {
     pub fn with_num(num: usize, loc: Loc) -> Self {
         Self {
             data: TokenKind::Num(num),
+            loc,
+        }
+    }
+
+    pub fn with_reserved(keyword: &'static str, loc: Loc) -> Self {
+        Self {
+            data: TokenKind::Reserved(keyword),
             loc,
         }
     }

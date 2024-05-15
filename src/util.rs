@@ -1,5 +1,6 @@
 use std::{
     cmp,
+    fmt::Display,
     ops::{Add, AddAssign},
 };
 
@@ -53,9 +54,27 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Represents a error occured in this program.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Error {
+    ConfigError,
     CompileError {
         message: String,
         input: &'static str,
         loc: Loc,
     },
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ConfigError => Ok(()),
+            Self::CompileError {
+                message,
+                input,
+                loc,
+            } => {
+                f.write_str(*input)?;
+                f.write_str("\n")?;
+                write!(f, "{:num$}^ {}", "", message, num = loc.start)
+            }
+        }
+    }
 }

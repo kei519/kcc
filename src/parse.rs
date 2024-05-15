@@ -38,12 +38,14 @@ impl Parser {
     }
 
     /// ```text
-    /// program = expr
+    /// program = stmt*
     /// ```
     pub fn parse(mut self) -> Result<Vec<Node>> {
         let mut ret = vec![];
 
-        ret.push(self.expr()?);
+        while let Ok(node) = self.stmt() {
+            ret.push(node);
+        }
 
         if TokenKind::Eof != self.tok().data {
             return Err(Error::CompileError {
@@ -204,6 +206,15 @@ impl Parser {
     /// ```
     pub fn expr(&mut self) -> Result<Node> {
         self.equality()
+    }
+
+    /// ```text
+    /// stmt = expr ";"
+    /// ```
+    pub fn stmt(&mut self) -> Result<Node> {
+        let node = self.expr()?;
+        self.expect(";")?;
+        Ok(node)
     }
 }
 

@@ -1,6 +1,7 @@
 use std::{
     cmp,
     fmt::Display,
+    io,
     ops::{Add, AddAssign},
 };
 
@@ -52,14 +53,20 @@ pub struct Annot<T> {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Represents a error occured in this program.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug)]
 pub enum Error {
+    /// Represents a error with the configuration.
     ConfigError,
+    /// Represents a error occured during compilation.
     CompileError {
         message: String,
         input: &'static str,
         loc: Loc,
     },
+    /// Represents a error occured during I/O.
+    IoError(io::Error),
+    /// Represents a error other than the above with a message.
+    Any(String),
 }
 
 impl Display for Error {
@@ -75,6 +82,8 @@ impl Display for Error {
                 f.write_str("\n")?;
                 write!(f, "{:num$}^ {}", "", message, num = loc.start)
             }
+            Self::IoError(e) => e.fmt(f),
+            Self::Any(s) => f.write_str(s),
         }
     }
 }

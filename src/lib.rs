@@ -1,3 +1,4 @@
+mod codegen;
 mod config;
 mod parse;
 mod tokenize;
@@ -6,6 +7,9 @@ mod util;
 use config::Config;
 use tokenize::Tokenizer;
 use util::{Error, Result};
+
+/// The default output file name.
+const DEFAULT_OUTPUT: &str = "a.out";
 
 /// Executes the main logic.
 ///
@@ -30,7 +34,9 @@ where
     let tokens = tokenizer.tokenize()?;
 
     let parser = parse::Parser::new(input, tokens);
-    let _nodes = parser.parse()?;
+    let nodes = parser.parse()?;
+
+    codegen::codegen(nodes, config.out_path.unwrap_or(DEFAULT_OUTPUT.into()))?;
 
     Ok(())
 }

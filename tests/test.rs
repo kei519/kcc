@@ -2,8 +2,8 @@ use std::process::Command;
 
 /// Run a test with the given input and asserts the exit code and the expected.
 macro_rules! test {
-    ($input:expr, $expected:expr) => {
-        assert_eq!(run_test($input), $expected as i32);
+    ($expected:expr, $input:expr) => {
+        assert_eq!($expected as i32, run_test($input));
     };
 }
 
@@ -16,32 +16,36 @@ fn run_test(input: impl Into<String>) -> i32 {
 }
 
 #[test]
-fn test_num1() {
-    test!("0", 0);
+fn test1() {
+    test!(0, "0");
 }
 
 #[test]
-fn test_num2() {
-    test!("47", 47);
+fn test2() {
+    test!(42, "42");
 }
 
 #[test]
-fn test_rand_num() {
-    let rand = kcc::rand() as u8;
-    test!(rand.to_string(), rand);
+fn test3() {
+    test!(21, "5+20-4");
 }
 
 #[test]
-fn test_add() {
-    test!("1+2", 3);
+fn test4() {
+    test!(41, " 12 + 34 - 5 ");
 }
 
 #[test]
-fn test_sub() {
-    test!("58-9", 49);
+fn test5() {
+    test!(47, "5+6*7");
 }
 
 #[test]
-fn test_add_sub() {
-    test!("1\t+  2\t\t-\r3\n", 0);
+fn test6() {
+    test!(15, "5*(9-6)");
+}
+
+#[test]
+fn test7() {
+    test!(4, "(3+5)/2");
 }

@@ -3,7 +3,7 @@ mod tests;
 
 use crate::util::{Annot, Error, Loc, Result};
 
-const KW: [&'static str; 2] = ["+", "-"];
+const KW: [&'static str; 6] = ["+", "-", "*", "/", "(", ")"];
 
 pub struct Tokenizer {
     input: &'static str,

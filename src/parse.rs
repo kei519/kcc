@@ -78,28 +78,48 @@ impl Parser {
     }
 
     /// ```text
-    /// primary = num
+    /// primary = "(" expr ")" | num
     /// ```
     pub fn primary(&mut self) -> Result<Node> {
-        match self.tok().data {
-            TokenKind::Num(num) => {
-                let node = Node::with_num(num, self.tok().loc);
-                self.next();
-                Ok(node)
-            }
-            _ => Err(Error::CompileError {
+        if self.consume("(") {
+            let node = self.expr()?;
+            self.expect(")")?;
+            Ok(node)
+        } else if let TokenKind::Num(num) = self.tok().data {
+            let node = Node::with_num(num, self.tok().loc);
+            self.next();
+            Ok(node)
+        } else {
+            Err(Error::CompileError {
                 message: "number is required".into(),
                 input: self.input,
                 loc: self.tok().loc,
-            }),
+            })
         }
     }
 
     /// ```text
-    /// expr = primary ( "+" expr | "-" expr )?
+    /// mul = primary ( "*" mul | "/" mul )?
+    /// ```
+    pub fn mul(&mut self) -> Result<Node> {
+        let left = self.primary()?;
+
+        if self.consume("*") {
+            let right = self.mul()?;
+            Ok(Node::with_binop(BinOpKind::Mul, left, right))
+        } else if self.consume("/") {
+            let right = self.mul()?;
+            Ok(Node::with_binop(BinOpKind::Div, left, right))
+        } else {
+            Ok(left)
+        }
+    }
+
+    /// ```text
+    /// expr = mul ( "+" expr | "-" expr )?
     /// ```
     pub fn expr(&mut self) -> Result<Node> {
-        let left = self.primary()?;
+        let left = self.mul()?;
 
         if self.consume("+") {
             let right = self.expr()?;
@@ -116,8 +136,14 @@ impl Parser {
 /// Represents a binary operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BinOpKind {
+    /// +
     Add,
+    /// -
     Sub,
+    /// *
+    Mul,
+    /// /
+    Div,
 }
 
 /// Represents a node in AST.

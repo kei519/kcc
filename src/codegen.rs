@@ -29,7 +29,6 @@ pub fn codegen(nodes: Vec<Node>, asm_path: impl AsRef<Path>) -> Result<()> {
     // Write the body.
     for node in nodes {
         gen(node, &mut asm_file).map_err(into_err)?;
-        writeln!(asm_file, "  pop %rax").map_err(into_err)?;
     }
 
     // Write the epilouge.
@@ -56,6 +55,9 @@ fn gen(node: Node, file: &mut File) -> io::Result<()> {
                 UnOpKind::Return => {
                     writeln!(file, "  pop %rax")?;
                     writeln!(file, "  ret")?;
+                }
+                UnOpKind::Expr => {
+                    writeln!(file, "  add $8, %rsp")?;
                 }
             }
         }

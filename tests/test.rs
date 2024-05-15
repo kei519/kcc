@@ -64,3 +64,83 @@ fn test9() {
 fn test10() {
     test!(10, "- - +10");
 }
+
+#[test]
+fn test11() {
+    test!(0, "0 == 1");
+}
+
+#[test]
+fn test12() {
+    test!(1, "42 == 42");
+}
+
+#[test]
+fn test13() {
+    test!(1, "0 != 1");
+}
+
+#[test]
+fn test14() {
+    test!(0, "42 != 42");
+}
+
+#[test]
+fn test15() {
+    test!(1, "0 < 1");
+}
+
+#[test]
+fn test16() {
+    test!(0, "1 < 1");
+}
+
+#[test]
+fn test17() {
+    test!(0, "2 < 1");
+}
+
+#[test]
+fn test18() {
+    test!(1, "0 <= 1");
+}
+
+#[test]
+fn test19() {
+    test!(1, "1 <= 1");
+}
+
+#[test]
+fn test20() {
+    test!(0, "2 <= 1");
+}
+
+#[test]
+fn test21() {
+    test!(1, "1 > 0");
+}
+
+#[test]
+fn test22() {
+    test!(0, "1 > 1");
+}
+
+#[test]
+fn test23() {
+    test!(0, "1 > 2");
+}
+
+#[test]
+fn test24() {
+    test!(1, "1 >= 0");
+}
+
+#[test]
+fn test25() {
+    test!(1, "1 >= 1");
+}
+
+#[test]
+fn test26() {
+    test!(0, "1 >= 2");
+}

@@ -1,4 +1,5 @@
 mod config;
+mod parse;
 mod tokenize;
 mod util;
 
@@ -26,7 +27,10 @@ where
 
     let input = config.input.leak();
     let tokenizer = Tokenizer::new(input);
-    tokenizer.tokenize()?;
+    let tokens = tokenizer.tokenize()?;
+
+    let parser = parse::Parser::new(input, tokens);
+    let _nodes = parser.parse()?;
 
     Ok(())
 }

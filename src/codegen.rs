@@ -67,6 +67,36 @@ fn gen(node: Node, file: &mut File) -> io::Result<()> {
                     writeln!(file, "  cqo")?;
                     writeln!(file, "  idiv %rdi")?;
                 }
+                BinOpKind::Lt => {
+                    writeln!(file, "  cmp %rdi, %rax")?;
+                    writeln!(file, "  setl %al")?;
+                    writeln!(file, "  movzb %al, %rax")?;
+                }
+                BinOpKind::Le => {
+                    writeln!(file, "  cmp %rdi, %rax")?;
+                    writeln!(file, "  setle %al")?;
+                    writeln!(file, "  movzb %al, %rax")?;
+                }
+                BinOpKind::Gt => {
+                    writeln!(file, "  cmp %rdi, %rax")?;
+                    writeln!(file, "  setg %al")?;
+                    writeln!(file, "  movzb %al, %rax")?;
+                }
+                BinOpKind::Ge => {
+                    writeln!(file, "  cmp %rdi, %rax")?;
+                    writeln!(file, "  setge %al")?;
+                    writeln!(file, "  movzb %al, %rax")?;
+                }
+                BinOpKind::Eq => {
+                    writeln!(file, "  cmp %rdi, %rax")?;
+                    writeln!(file, "  sete %al")?;
+                    writeln!(file, "  movzb %al, %rax")?;
+                }
+                BinOpKind::Ne => {
+                    writeln!(file, "  cmp %rdi, %rax")?;
+                    writeln!(file, "  setne %al")?;
+                    writeln!(file, "  movzb %al, %rax")?;
+                }
             }
             writeln!(file, "  push %rax")?;
         }

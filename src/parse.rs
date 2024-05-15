@@ -103,15 +103,18 @@ impl Parser {
     /// ```
     pub fn unary(&mut self) -> Result<Node> {
         let loc = self.tok().loc;
-        if self.consume("+") {
+
+        let node = if self.consume("+") {
             let operand = self.unary()?;
-            Ok(Node::with_unop(UnOpKind::Pos, operand, loc))
+            Node::with_unop(UnOpKind::Pos, operand, loc)
         } else if self.consume("-") {
             let operand = self.unary()?;
-            Ok(Node::with_unop(UnOpKind::Neg, operand, loc))
+            Node::with_unop(UnOpKind::Neg, operand, loc)
         } else {
-            self.primary()
-        }
+            self.primary()?
+        };
+
+        Ok(node)
     }
 
     /// ```text
@@ -120,32 +123,87 @@ impl Parser {
     pub fn mul(&mut self) -> Result<Node> {
         let left = self.unary()?;
 
-        if self.consume("*") {
+        let node = if self.consume("*") {
             let right = self.mul()?;
-            Ok(Node::with_binop(BinOpKind::Mul, left, right))
+            Node::with_binop(BinOpKind::Mul, left, right)
         } else if self.consume("/") {
             let right = self.mul()?;
-            Ok(Node::with_binop(BinOpKind::Div, left, right))
+            Node::with_binop(BinOpKind::Div, left, right)
         } else {
-            Ok(left)
-        }
+            left
+        };
+
+        Ok(node)
     }
 
     /// ```text
-    /// expr = mul ( "+" expr | "-" expr )?
+    /// add = mul ( "+" add | "-" add )?
     /// ```
-    pub fn expr(&mut self) -> Result<Node> {
+    pub fn add(&mut self) -> Result<Node> {
         let left = self.mul()?;
 
-        if self.consume("+") {
-            let right = self.expr()?;
-            Ok(Node::with_binop(BinOpKind::Add, left, right))
+        let node = if self.consume("+") {
+            let right = self.add()?;
+            Node::with_binop(BinOpKind::Add, left, right)
         } else if self.consume("-") {
-            let right = self.expr()?;
-            Ok(Node::with_binop(BinOpKind::Sub, left, right))
+            let right = self.add()?;
+            Node::with_binop(BinOpKind::Sub, left, right)
         } else {
-            Ok(left)
-        }
+            left
+        };
+
+        Ok(node)
+    }
+
+    /// ```text
+    /// relational = add ( "<" relational | "<=" relational | ">" relational | ">=" relational)?
+    /// ```
+    pub fn relational(&mut self) -> Result<Node> {
+        let left = self.add()?;
+
+        let node = if self.consume("<") {
+            let right = self.relational()?;
+            Node::with_binop(BinOpKind::Lt, left, right)
+        } else if self.consume("<=") {
+            let right = self.relational()?;
+            Node::with_binop(BinOpKind::Le, left, right)
+        } else if self.consume(">") {
+            let right = self.relational()?;
+            Node::with_binop(BinOpKind::Gt, left, right)
+        } else if self.consume(">=") {
+            let right = self.relational()?;
+            Node::with_binop(BinOpKind::Ge, left, right)
+        } else {
+            left
+        };
+
+        Ok(node)
+    }
+
+    /// ```text
+    /// equality = relational ( "==" equality | "!=" equality )?
+    /// ```
+    pub fn equality(&mut self) -> Result<Node> {
+        let left = self.relational()?;
+
+        let node = if self.consume("==") {
+            let right = self.equality()?;
+            Node::with_binop(BinOpKind::Eq, left, right)
+        } else if self.consume("!=") {
+            let right = self.equality()?;
+            Node::with_binop(BinOpKind::Ne, left, right)
+        } else {
+            left
+        };
+
+        Ok(node)
+    }
+
+    /// ```text
+    /// expr = equality
+    /// ```
+    pub fn expr(&mut self) -> Result<Node> {
+        self.equality()
     }
 }
 
@@ -169,6 +227,18 @@ pub enum BinOpKind {
     Mul,
     /// /
     Div,
+    /// <
+    Lt,
+    /// <=
+    Le,
+    /// >
+    Gt,
+    /// >=
+    Ge,
+    /// ==
+    Eq,
+    /// !=
+    Ne,
 }
 
 /// Represents a node in AST.

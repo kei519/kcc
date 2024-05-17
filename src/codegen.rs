@@ -183,6 +183,44 @@ impl<W: Write> Generator<W> {
                 writeln!(self.writer, ".L.end.{}:", self.num_label)?;
                 self.num_label += 1;
             }
+            NodeKind::If {
+                cond,
+                stmt,
+                elif_conds,
+                elif_stmts,
+                else_stmt,
+            } => {
+                self.codegen(*cond)?;
+                writeln!(self.writer, "  pop %rax")?;
+                writeln!(self.writer, "  test %rax, %rax")?;
+                writeln!(self.writer, "  jne .L.if.{}", self.num_label)?;
+
+                for (i, cond) in elif_conds.into_iter().enumerate() {
+                    self.codegen(cond)?;
+                    writeln!(self.writer, "  pop %rax")?;
+                    writeln!(self.writer, "  test %rax, %rax")?;
+                    writeln!(self.writer, "  jne .L.elif.{}.{}", i, self.num_label)?;
+                }
+
+                if let Some(else_stmt) = else_stmt {
+                    self.codegen(*else_stmt)?;
+                }
+                writeln!(self.writer, "  jmp .L.end.{}", self.num_label)?;
+
+                writeln!(self.writer, ".L.if.{}:", self.num_label)?;
+                self.codegen(*stmt)?;
+                writeln!(self.writer, "  jmp .L.end.{}", self.num_label)?;
+
+                for (i, stmt) in elif_stmts.into_iter().enumerate() {
+                    writeln!(self.writer, ".L.elif.{}.{}:", i, self.num_label)?;
+                    self.codegen(stmt)?;
+                    writeln!(self.writer, "  jmp .L.end.{}", self.num_label)?;
+                }
+
+                writeln!(self.writer, ".L.end.{}:", self.num_label)?;
+
+                self.num_label += 1;
+            }
             NodeKind::Program { stmts, global_vars } => {
                 // Determins the offset of each global variable.
                 let mut offset = 0;

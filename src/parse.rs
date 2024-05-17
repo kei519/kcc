@@ -318,6 +318,7 @@ impl Parser {
     ///      | ( "return" )? expr ";"
     ///      | "while" "(" expr ")" stmt
     ///      | "for" "(" expr? ";" expr? ";" expr ")" stmt
+    ///      | "if" "(" expr ")" ( "else" "if" "(" expr ")" stmt )* ( "else" stmt )?
     /// ```
     fn stmt(&mut self) -> Result<Node> {
         if self.peek("int") {
@@ -369,6 +370,45 @@ impl Parser {
 
             let loc = loc + stmt.loc;
             return Ok(Node::with_for(init, cond, inc, stmt, loc));
+        } else if self.consume("if") {
+            self.expect("(")?;
+            let cond = self.expr()?;
+            self.expect(")")?;
+            let stmt = self.stmt()?;
+
+            let mut elif_conds = vec![];
+            let mut elif_stmts = vec![];
+            let mut has_else = false;
+
+            while self.consume("else") {
+                has_else = true;
+                if !self.consume("if") {
+                    break;
+                }
+                has_else = false;
+
+                self.expect("(")?;
+                elif_conds.push(self.expr()?);
+                self.expect(")")?;
+
+                elif_stmts.push(self.stmt()?);
+            }
+
+            let else_stmt = if has_else { Some(self.stmt()?) } else { None };
+
+            let loc = if else_stmt.is_some() {
+                // This unwrapping always succeeds due to the condition.
+                loc + else_stmt.as_ref().unwrap().loc
+            } else if !elif_stmts.is_empty() {
+                // This unwrapping also always succeeds due to the condition.
+                loc + elif_stmts.last().unwrap().loc
+            } else {
+                loc + stmt.loc
+            };
+
+            return Ok(Node::with_if(
+                cond, stmt, elif_conds, elif_stmts, else_stmt, loc,
+            ));
         }
 
         let node = if self.consume("return") {
@@ -454,6 +494,14 @@ pub enum NodeKind {
         cond: Option<Box<Node>>,
         inc: Option<Box<Node>>,
         stmt: Box<Node>,
+    },
+    /// if.
+    If {
+        cond: Box<Node>,
+        stmt: Box<Node>,
+        elif_conds: Vec<Node>,
+        elif_stmts: Vec<Node>,
+        else_stmt: Option<Box<Node>>,
     },
     /// Whole program.
     Program {
@@ -545,6 +593,31 @@ impl Node {
                 cond: cond.map(|node| Box::new(node)),
                 inc: inc.map(|node| Box::new(node)),
                 stmt: Box::new(stmt),
+            },
+            loc,
+        }
+    }
+
+    /// # Remarks
+    ///
+    /// The size of `elif_conds` and the size of `elif_stmts` must be the same.
+    pub fn with_if(
+        cond: Node,
+        stmt: Node,
+        elif_conds: Vec<Node>,
+        elif_stmts: Vec<Node>,
+        else_stmt: Option<Node>,
+        loc: Loc,
+    ) -> Self {
+        assert_eq!(elif_conds.len(), elif_stmts.len());
+
+        Self {
+            data: NodeKind::If {
+                cond: Box::new(cond),
+                stmt: Box::new(stmt),
+                elif_conds,
+                elif_stmts,
+                else_stmt: else_stmt.map(|node| Box::new(node)),
             },
             loc,
         }

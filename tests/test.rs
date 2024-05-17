@@ -240,3 +240,56 @@ fn test42() {
         "int i = 200; int count = 0; for(i=0;i<10;) { i=i+2; count=count+1; } return count;"
     );
 }
+
+#[test]
+fn test43() {
+    test!(3, "if (0) return 2; return 3;");
+}
+
+#[test]
+fn test44() {
+    test!(3, "if (1-1) return 2; return 3;");
+}
+
+#[test]
+fn test45() {
+    test!(2, "if (1) return 2; return 3;");
+}
+
+#[test]
+fn test46() {
+    test!(2, "if (2-1) return 2; return 3;");
+}
+
+#[test]
+fn test47() {
+    test!(
+        1,
+        "if (1) { return 1; } else if (0) { return 2; } else { return 3; }"
+    );
+}
+
+#[test]
+fn test48() {
+    test!(
+        2,
+        "if (0) { return 1; } else if (1) { return 2; } else { return 3; }"
+    );
+}
+
+#[test]
+fn test49() {
+    test!(
+        3,
+        "if (0) { return 1; } else if (0) { return 2; } else { return 3; }"
+    );
+}
+
+#[test]
+fn test50() {
+    test!(
+        4,
+        "if (0) { return 1; } else if (0) { return 2; }
+            else if (1) { return 4; } else { return 3; }"
+    );
+}

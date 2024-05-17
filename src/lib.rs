@@ -40,12 +40,12 @@ where
     let tokens = tokenizer.tokenize()?;
 
     let parser = parse::Parser::new(input, tokens);
-    let nodes = parser.parse()?;
+    let top_node = parser.parse()?;
 
     // Generate assembly.
     let asm_path = mktemp()?;
     let mut gen = Generator::from_path(&asm_path)?;
-    gen.codegen(nodes)?;
+    gen.codegen(top_node)?;
 
     // Assemble the assembly.
     assemble(asm_path, config.out_path.unwrap_or(DEFAULT_OUTPUT.into()))?;

@@ -20,18 +20,14 @@ impl Generator<File> {
 }
 
 impl<W: Write> Generator<W> {
-    /// Generates and writes the assembly code for the given `nodes`.
-    pub fn codegen(&mut self, nodes: Vec<Node>) -> Result<()> {
+    /// Generates and writes the assembly code for the given `top_node`.
+    pub fn codegen(&mut self, top_node: Node) -> Result<()> {
         // Write the prolouge.
         writeln!(self.writer, ".global main")?;
         writeln!(self.writer, "main:")?;
 
         // Write the body.
-        for node in nodes {
-            self.gen(node)?;
-        }
-
-        // Write the epilouge.
+        self.gen(top_node)?;
 
         Ok(())
     }
@@ -106,6 +102,11 @@ impl<W: Write> Generator<W> {
                     }
                 }
                 writeln!(self.writer, "  push %rax")?;
+            }
+            NodeKind::Program { stmts } => {
+                for stmt in stmts {
+                    self.gen(stmt)?;
+                }
             }
         }
         Ok(())

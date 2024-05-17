@@ -40,14 +40,14 @@ impl Parser {
     /// ```text
     /// program = stmt*
     /// ```
-    pub fn parse(mut self) -> Result<Vec<Node>> {
-        let mut ret = vec![];
+    pub fn parse(mut self) -> Result<Node> {
+        let mut stmts = vec![];
 
         while TokenKind::Eof != self.tok().data {
-            ret.push(self.stmt()?);
+            stmts.push(self.stmt()?);
         }
 
-        Ok(ret)
+        Ok(Node::with_prog(stmts))
     }
 
     pub fn consume(&mut self, op: &str) -> bool {
@@ -270,7 +270,7 @@ pub enum BinOpKind {
 }
 
 /// Represents a node in AST.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NodeKind {
     /// Integer.
     Num(usize),
@@ -282,6 +282,8 @@ pub enum NodeKind {
         lhs: Box<Node>,
         rhs: Box<Node>,
     },
+    /// Whole program.
+    Program { stmts: Vec<Node> },
 }
 
 pub type Node = Annot<NodeKind>;
@@ -315,6 +317,25 @@ impl Node {
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
             },
+            loc,
+        }
+    }
+
+    pub fn with_prog(stmts: Vec<Node>) -> Self {
+        // If there are some statements, the location is the merge of the first and the last.
+        // Otherwise, the location is at the begginning, 0.
+        let loc = if let Some(first) = stmts.first() {
+            if let Some(last) = stmts.last() {
+                first.loc + last.loc
+            } else {
+                first.loc
+            }
+        } else {
+            Loc::at(0)
+        };
+
+        Self {
+            data: NodeKind::Program { stmts },
             loc,
         }
     }

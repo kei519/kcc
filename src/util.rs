@@ -95,6 +95,12 @@ impl Display for Error {
     }
 }
 
+impl From<io::Error> for Error {
+    fn from(value: io::Error) -> Self {
+        Self::IoError(value)
+    }
+}
+
 /// Assemble the given assemly code located at `asm_path` into a executable located at `out_path`.
 pub fn assemble(asm_path: impl AsRef<Path>, out_path: impl AsRef<Path>) -> Result<()> {
     let output = process::Command::new("gcc")
@@ -102,8 +108,7 @@ pub fn assemble(asm_path: impl AsRef<Path>, out_path: impl AsRef<Path>) -> Resul
         .arg(out_path.as_ref())
         .arg("-xassembler")
         .arg(asm_path.as_ref())
-        .output()
-        .map_err(into_err)?;
+        .output()?;
 
     if !output.status.success() {
         return Err(Error::Any(format!(
@@ -141,9 +146,4 @@ pub fn rand() -> u64 {
     SystemTime::now().hash(&mut hasher);
     process::id().hash(&mut hasher);
     hasher.finish()
-}
-
-/// Converts [io::Error] into [Error].
-pub fn into_err(e: io::Error) -> Error {
-    Error::IoError(e)
 }

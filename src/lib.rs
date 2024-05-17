@@ -6,7 +6,7 @@ mod util;
 
 use config::Config;
 use tokenize::Tokenizer;
-use util::{assemble, into_err, Error, Result};
+use util::{assemble, Error, Result};
 
 pub use util::{mktemp, rand};
 
@@ -42,7 +42,7 @@ where
     let nodes = parser.parse()?;
 
     // Generate assembly.
-    let asm_path = mktemp().map_err(into_err)?;
+    let asm_path = mktemp()?;
     codegen::codegen(nodes, &asm_path)?;
 
     // Assemble the assembly.

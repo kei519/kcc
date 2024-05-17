@@ -224,3 +224,19 @@ fn test40() {
         "int i = 0; while(i < 100) { int b = 10; i = i+b; } return i;"
     );
 }
+
+#[test]
+fn test41() {
+    test!(
+        55,
+        "int i = 0; int j = 0; for (i = 0; i <= 10; i=i+1) j=i+j; return j;"
+    );
+}
+
+#[test]
+fn test42() {
+    test!(
+        5,
+        "int i = 200; int count = 0; for(i=0;i<10;) { i=i+2; count=count+1; } return count;"
+    );
+}

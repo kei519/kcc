@@ -317,6 +317,7 @@ impl Parser {
     ///      | block = "{" stmt* "}"
     ///      | ( "return" )? expr ";"
     ///      | "while" "(" expr ")" stmt
+    ///      | "for" "(" expr? ";" expr? ";" expr ")" stmt
     /// ```
     fn stmt(&mut self) -> Result<Node> {
         if self.peek("int") {
@@ -352,6 +353,22 @@ impl Parser {
             let loc = loc + stmt.loc;
 
             return Ok(Node::with_while(cond, stmt, loc));
+        } else if self.consume("for") {
+            self.expect("(")?;
+
+            let init = self.expr().ok();
+            self.expect(";")?;
+
+            let cond = self.expr().ok();
+            self.expect(";")?;
+
+            let inc = self.expr().ok();
+            self.expect(")")?;
+
+            let stmt = self.stmt()?;
+
+            let loc = loc + stmt.loc;
+            return Ok(Node::with_for(init, cond, inc, stmt, loc));
         }
 
         let node = if self.consume("return") {
@@ -431,6 +448,13 @@ pub enum NodeKind {
     Block { stmts: Vec<Node> },
     /// while.
     While { cond: Box<Node>, stmt: Box<Node> },
+    /// for.
+    For {
+        init: Option<Box<Node>>,
+        cond: Option<Box<Node>>,
+        inc: Option<Box<Node>>,
+        stmt: Box<Node>,
+    },
     /// Whole program.
     Program {
         stmts: Vec<Node>,
@@ -502,6 +526,24 @@ impl Node {
         Self {
             data: NodeKind::While {
                 cond: Box::new(cond),
+                stmt: Box::new(stmt),
+            },
+            loc,
+        }
+    }
+
+    pub fn with_for(
+        init: Option<Node>,
+        cond: Option<Node>,
+        inc: Option<Node>,
+        stmt: Node,
+        loc: Loc,
+    ) -> Self {
+        Self {
+            data: NodeKind::For {
+                init: init.map(|node| Box::new(node)),
+                cond: cond.map(|node| Box::new(node)),
+                inc: inc.map(|node| Box::new(node)),
                 stmt: Box::new(stmt),
             },
             loc,

@@ -159,6 +159,30 @@ impl<W: Write> Generator<W> {
                 writeln!(self.writer, ".L.end.{}:", self.num_label)?;
                 self.num_label += 1;
             }
+            NodeKind::For {
+                init,
+                cond,
+                inc,
+                stmt,
+            } => {
+                if let Some(init) = init {
+                    self.codegen(*init)?;
+                }
+                writeln!(self.writer, ".L.start.{}:", self.num_label)?;
+                if let Some(cond) = cond {
+                    self.codegen(*cond)?;
+                }
+                writeln!(self.writer, "  pop %rax")?;
+                writeln!(self.writer, "  test %rax, %rax")?;
+                writeln!(self.writer, "  je .L.end.{}", self.num_label)?;
+                self.codegen(*stmt)?;
+                if let Some(inc) = inc {
+                    self.codegen(*inc)?;
+                }
+                writeln!(self.writer, "  jmp .L.start.{}", self.num_label)?;
+                writeln!(self.writer, ".L.end.{}:", self.num_label)?;
+                self.num_label += 1;
+            }
             NodeKind::Program { stmts, global_vars } => {
                 // Determins the offset of each global variable.
                 let mut offset = 0;

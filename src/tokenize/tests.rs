@@ -17,8 +17,14 @@ fn test_empty_input() {
 fn test_some_input() {
     let input = "abc";
     let tokenizer = Tokenizer::new(input);
-    let tokens = tokenizer.tokenize();
-    assert!(tokens.is_err());
+    let tokens = tokenizer.tokenize().unwrap();
+    assert_eq!(tokens.len(), 2);
+
+    assert_eq!(tokens[0].data, TokenKind::Ident("abc"));
+    assert_eq!(tokens[0].loc, Loc::range(0, 3));
+
+    assert_eq!(tokens[1].data, TokenKind::Eof);
+    assert_eq!(tokens[1].loc, Loc::at(3));
 }
 
 #[test]
@@ -145,6 +151,15 @@ fn test_sepkw_with_sep() {
 #[test]
 fn test_sepkw_not_separated() {
     let input = "return42;";
-    let tokens = Tokenizer::new(input).tokenize();
-    assert!(tokens.is_err());
+    let tokens = Tokenizer::new(input).tokenize().unwrap();
+    assert_eq!(tokens.len(), 3);
+
+    assert_eq!(tokens[0].data, TokenKind::Ident("return42"));
+    assert_eq!(tokens[0].loc, Loc::range(0, 8));
+
+    assert_eq!(tokens[1].data, TokenKind::Reserved(";"));
+    assert_eq!(tokens[1].loc, Loc::range(8, 9));
+
+    assert_eq!(tokens[2].data, TokenKind::Eof);
+    assert_eq!(tokens[2].loc, Loc::at(9));
 }

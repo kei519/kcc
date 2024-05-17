@@ -1,46 +1,44 @@
 use crate::{
-    parse::{BinOpKind, Node, NodeKind, UnOpKind},
-    util::Result,
+    parse::{BinOpKind, Node, NodeKind, UnOpKind, Var},
+    util::{Error, Result},
 };
 
-use std::{fs::File, io::Write, path::Path};
+use std::{collections::HashSet, fs::File, io::Write, mem::size_of, path::Path};
+
+/// Represents the size of a word in bytes.
+const WORD_SIZE: usize = size_of::<usize>();
 
 /// Represents an assembly code generator that writes to a writer.
 pub struct Generator<W: Write> {
+    input: &'static str,
     /// Writer to write a generated assembly code.
     writer: W,
+    /// Global variables.
+    global_vars: HashSet<Var>,
 }
 
 impl Generator<File> {
-    pub fn from_path(path: impl AsRef<Path>) -> Result<Self> {
+    pub fn from_path(input: &'static str, path: impl AsRef<Path>) -> Result<Self> {
         let file = File::create(path)?;
 
-        Ok(Self { writer: file })
+        Ok(Self {
+            input,
+            writer: file,
+            global_vars: HashSet::new(),
+        })
     }
 }
 
 impl<W: Write> Generator<W> {
-    /// Generates and writes the assembly code for the given `top_node`.
-    pub fn codegen(&mut self, top_node: Node) -> Result<()> {
-        // Write the prolouge.
-        writeln!(self.writer, ".global main")?;
-        writeln!(self.writer, "main:")?;
-
-        // Write the body.
-        self.gen(top_node)?;
-
-        Ok(())
-    }
-
     /// Generates and writes the assembly code for the given `node`.
-    fn gen(&mut self, node: Node) -> Result<()> {
+    pub fn codegen(&mut self, node: Node) -> Result<()> {
         match node.data {
             NodeKind::Num(num) => {
                 writeln!(self.writer, "  mov ${}, %rax", num)?;
                 writeln!(self.writer, "  push %rax")?;
             }
             NodeKind::UnOp { op, operand } => {
-                self.gen(*operand)?;
+                self.codegen(*operand)?;
                 match op {
                     UnOpKind::Pos => {}
                     UnOpKind::Neg => {
@@ -50,16 +48,34 @@ impl<W: Write> Generator<W> {
                     }
                     UnOpKind::Return => {
                         writeln!(self.writer, "  pop %rax")?;
+
+                        // Writes the epilogue.
+                        writeln!(self.writer, "  mov %rbp, %rsp")?;
+                        writeln!(self.writer, "  pop %rbp")?;
+
                         writeln!(self.writer, "  ret")?;
                     }
                     UnOpKind::Expr => {
-                        writeln!(self.writer, "  add $8, %rsp")?;
+                        writeln!(self.writer, "  add ${}, %rsp", WORD_SIZE)?;
                     }
                 }
             }
             NodeKind::BinOp { op, lhs, rhs } => {
-                self.gen(*lhs)?;
-                self.gen(*rhs)?;
+                match op {
+                    BinOpKind::Assign => {
+                        self.gen_addr(*lhs)?;
+                        self.codegen(*rhs)?;
+                        writeln!(self.writer, "  pop %rax")?;
+                        writeln!(self.writer, "  pop %rdi")?;
+                        writeln!(self.writer, "  mov %rax, (%rdi)")?;
+                        writeln!(self.writer, "  push %rax")?;
+                        return Ok(());
+                    }
+                    _ => {}
+                }
+
+                self.codegen(*lhs)?;
+                self.codegen(*rhs)?;
                 writeln!(self.writer, "  pop %rdi")?;
                 writeln!(self.writer, "  pop %rax")?;
                 match op {
@@ -100,15 +116,61 @@ impl<W: Write> Generator<W> {
                         writeln!(self.writer, "  setne %al")?;
                         writeln!(self.writer, "  movzb %al, %rax")?;
                     }
+                    BinOpKind::Assign => {
+                        unreachable!("Assign should be handled before reaching here")
+                    }
                 }
                 writeln!(self.writer, "  push %rax")?;
             }
-            NodeKind::Program { stmts } => {
+            NodeKind::Var(_) => {
+                self.gen_addr(node)?;
+                writeln!(self.writer, "  pop %rdi")?;
+                writeln!(self.writer, "  push (%rdi)")?;
+            }
+            NodeKind::Program { stmts, global_vars } => {
+                // Determins the offset of each global variable.
+                let mut offset = 0;
+                for mut global_var in global_vars {
+                    offset += WORD_SIZE;
+                    global_var.offset = offset;
+                    self.global_vars.insert(global_var);
+                }
+
+                // Write the prolouge.
+                writeln!(self.writer, ".global main")?;
+                writeln!(self.writer, "main:")?;
+                writeln!(self.writer, "  push %rbp")?;
+                writeln!(self.writer, "  mov %rsp, %rbp")?;
+                // Allocates memory for global variables.
+                if offset != 0 {
+                    writeln!(self.writer, "  sub ${}, %rsp", offset)?;
+                }
+
                 for stmt in stmts {
-                    self.gen(stmt)?;
+                    self.codegen(stmt)?;
                 }
             }
         }
         Ok(())
+    }
+
+    /// Generates the address of the given `node`.
+    fn gen_addr(&mut self, node: Node) -> Result<()> {
+        match node.data {
+            NodeKind::Var(name) => {
+                if let Some(var) = (&self.global_vars).into_iter().find(|v| v.name == name) {
+                    writeln!(self.writer, "  lea -{}(%rbp), %rdi", var.offset)?;
+                    writeln!(self.writer, "  push %rdi")?;
+                    Ok(())
+                } else {
+                    unreachable!("We don't need declaration of variables");
+                }
+            }
+            _ => Err(Error::CompileError {
+                message: "not an lvalue".into(),
+                input: self.input,
+                loc: node.loc,
+            }),
+        }
     }
 }

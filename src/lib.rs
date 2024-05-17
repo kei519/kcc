@@ -4,6 +4,7 @@ mod parse;
 mod tokenize;
 mod util;
 
+use codegen::Generator;
 use config::Config;
 use tokenize::Tokenizer;
 use util::{assemble, Error, Result};
@@ -43,7 +44,8 @@ where
 
     // Generate assembly.
     let asm_path = mktemp()?;
-    codegen::codegen(nodes, &asm_path)?;
+    let mut gen = Generator::from_path(&asm_path)?;
+    gen.codegen(nodes)?;
 
     // Assemble the assembly.
     assemble(asm_path, config.out_path.unwrap_or(DEFAULT_OUTPUT.into()))?;

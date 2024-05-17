@@ -1,108 +1,113 @@
 use crate::{
     parse::{BinOpKind, Node, NodeKind, UnOpKind},
-    util::{Error, Result},
+    util::Result,
 };
 
-use std::{fs::File, io::Write as _, path::Path};
+use std::{fs::File, io::Write, path::Path};
 
-/// Generates assembly code for the given `nodes` and writes it to the file at `asm_path`.
-pub fn codegen(nodes: Vec<Node>, asm_path: impl AsRef<Path>) -> Result<()> {
-    let mut asm_file = match File::create(&asm_path) {
-        Ok(file) => file,
-        Err(e) => {
-            return Err(Error::Any(format!(
-                "{}: {}",
-                e,
-                asm_path.as_ref().display(),
-            )))
-        }
-    };
-
-    // Write the prolouge.
-    writeln!(asm_file, ".global main")?;
-    writeln!(asm_file, "main:")?;
-
-    // Write the body.
-    for node in nodes {
-        gen(node, &mut asm_file)?;
-    }
-
-    // Write the epilouge.
-
-    Ok(())
+/// Represents an assembly code generator that writes to a writer.
+pub struct Generator<W: Write> {
+    /// Writer to write a generated assembly code.
+    writer: W,
 }
 
-/// Generates code for the given `node` and writes it to `file`.
-fn gen(node: Node, file: &mut File) -> Result<()> {
-    match node.data {
-        NodeKind::Num(num) => {
-            writeln!(file, "  mov ${}, %rax", num)?;
-            writeln!(file, "  push %rax")?;
-        }
-        NodeKind::UnOp { op, operand } => {
-            gen(*operand, file)?;
-            match op {
-                UnOpKind::Pos => {}
-                UnOpKind::Neg => {
-                    writeln!(file, "  pop %rax")?;
-                    writeln!(file, "  neg %rax")?;
-                    writeln!(file, "  push %rax")?;
-                }
-                UnOpKind::Return => {
-                    writeln!(file, "  pop %rax")?;
-                    writeln!(file, "  ret")?;
-                }
-                UnOpKind::Expr => {
-                    writeln!(file, "  add $8, %rsp")?;
-                }
-            }
-        }
-        NodeKind::BinOp { op, lhs, rhs } => {
-            gen(*lhs, file)?;
-            gen(*rhs, file)?;
-            writeln!(file, "  pop %rdi")?;
-            writeln!(file, "  pop %rax")?;
-            match op {
-                BinOpKind::Add => writeln!(file, "  add %rdi, %rax")?,
-                BinOpKind::Sub => writeln!(file, "  sub %rdi, %rax")?,
-                BinOpKind::Mul => writeln!(file, "  imul %rdi, %rax")?,
-                BinOpKind::Div => {
-                    writeln!(file, "  cqo")?;
-                    writeln!(file, "  idiv %rdi")?;
-                }
-                BinOpKind::Lt => {
-                    writeln!(file, "  cmp %rdi, %rax")?;
-                    writeln!(file, "  setl %al")?;
-                    writeln!(file, "  movzb %al, %rax")?;
-                }
-                BinOpKind::Le => {
-                    writeln!(file, "  cmp %rdi, %rax")?;
-                    writeln!(file, "  setle %al")?;
-                    writeln!(file, "  movzb %al, %rax")?;
-                }
-                BinOpKind::Gt => {
-                    writeln!(file, "  cmp %rdi, %rax")?;
-                    writeln!(file, "  setg %al")?;
-                    writeln!(file, "  movzb %al, %rax")?;
-                }
-                BinOpKind::Ge => {
-                    writeln!(file, "  cmp %rdi, %rax")?;
-                    writeln!(file, "  setge %al")?;
-                    writeln!(file, "  movzb %al, %rax")?;
-                }
-                BinOpKind::Eq => {
-                    writeln!(file, "  cmp %rdi, %rax")?;
-                    writeln!(file, "  sete %al")?;
-                    writeln!(file, "  movzb %al, %rax")?;
-                }
-                BinOpKind::Ne => {
-                    writeln!(file, "  cmp %rdi, %rax")?;
-                    writeln!(file, "  setne %al")?;
-                    writeln!(file, "  movzb %al, %rax")?;
-                }
-            }
-            writeln!(file, "  push %rax")?;
-        }
+impl Generator<File> {
+    pub fn from_path(path: impl AsRef<Path>) -> Result<Self> {
+        let file = File::create(path)?;
+
+        Ok(Self { writer: file })
     }
-    Ok(())
+}
+
+impl<W: Write> Generator<W> {
+    /// Generates and writes the assembly code for the given `nodes`.
+    pub fn codegen(&mut self, nodes: Vec<Node>) -> Result<()> {
+        // Write the prolouge.
+        writeln!(self.writer, ".global main")?;
+        writeln!(self.writer, "main:")?;
+
+        // Write the body.
+        for node in nodes {
+            self.gen(node)?;
+        }
+
+        // Write the epilouge.
+
+        Ok(())
+    }
+
+    /// Generates and writes the assembly code for the given `node`.
+    fn gen(&mut self, node: Node) -> Result<()> {
+        match node.data {
+            NodeKind::Num(num) => {
+                writeln!(self.writer, "  mov ${}, %rax", num)?;
+                writeln!(self.writer, "  push %rax")?;
+            }
+            NodeKind::UnOp { op, operand } => {
+                self.gen(*operand)?;
+                match op {
+                    UnOpKind::Pos => {}
+                    UnOpKind::Neg => {
+                        writeln!(self.writer, "  pop %rax")?;
+                        writeln!(self.writer, "  neg %rax")?;
+                        writeln!(self.writer, "  push %rax")?;
+                    }
+                    UnOpKind::Return => {
+                        writeln!(self.writer, "  pop %rax")?;
+                        writeln!(self.writer, "  ret")?;
+                    }
+                    UnOpKind::Expr => {
+                        writeln!(self.writer, "  add $8, %rsp")?;
+                    }
+                }
+            }
+            NodeKind::BinOp { op, lhs, rhs } => {
+                self.gen(*lhs)?;
+                self.gen(*rhs)?;
+                writeln!(self.writer, "  pop %rdi")?;
+                writeln!(self.writer, "  pop %rax")?;
+                match op {
+                    BinOpKind::Add => writeln!(self.writer, "  add %rdi, %rax")?,
+                    BinOpKind::Sub => writeln!(self.writer, "  sub %rdi, %rax")?,
+                    BinOpKind::Mul => writeln!(self.writer, "  imul %rdi, %rax")?,
+                    BinOpKind::Div => {
+                        writeln!(self.writer, "  cqo")?;
+                        writeln!(self.writer, "  idiv %rdi")?;
+                    }
+                    BinOpKind::Lt => {
+                        writeln!(self.writer, "  cmp %rdi, %rax")?;
+                        writeln!(self.writer, "  setl %al")?;
+                        writeln!(self.writer, "  movzb %al, %rax")?;
+                    }
+                    BinOpKind::Le => {
+                        writeln!(self.writer, "  cmp %rdi, %rax")?;
+                        writeln!(self.writer, "  setle %al")?;
+                        writeln!(self.writer, "  movzb %al, %rax")?;
+                    }
+                    BinOpKind::Gt => {
+                        writeln!(self.writer, "  cmp %rdi, %rax")?;
+                        writeln!(self.writer, "  setg %al")?;
+                        writeln!(self.writer, "  movzb %al, %rax")?;
+                    }
+                    BinOpKind::Ge => {
+                        writeln!(self.writer, "  cmp %rdi, %rax")?;
+                        writeln!(self.writer, "  setge %al")?;
+                        writeln!(self.writer, "  movzb %al, %rax")?;
+                    }
+                    BinOpKind::Eq => {
+                        writeln!(self.writer, "  cmp %rdi, %rax")?;
+                        writeln!(self.writer, "  sete %al")?;
+                        writeln!(self.writer, "  movzb %al, %rax")?;
+                    }
+                    BinOpKind::Ne => {
+                        writeln!(self.writer, "  cmp %rdi, %rax")?;
+                        writeln!(self.writer, "  setne %al")?;
+                        writeln!(self.writer, "  movzb %al, %rax")?;
+                    }
+                }
+                writeln!(self.writer, "  push %rax")?;
+            }
+        }
+        Ok(())
+    }
 }

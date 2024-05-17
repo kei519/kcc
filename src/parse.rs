@@ -43,16 +43,8 @@ impl Parser {
     pub fn parse(mut self) -> Result<Vec<Node>> {
         let mut ret = vec![];
 
-        while let Ok(node) = self.stmt() {
-            ret.push(node);
-        }
-
-        if TokenKind::Eof != self.tok().data {
-            return Err(Error::CompileError {
-                message: "extra token".into(),
-                input: self.input,
-                loc: self.tok().loc,
-            });
+        while TokenKind::Eof != self.tok().data {
+            ret.push(self.stmt()?);
         }
 
         Ok(ret)
@@ -79,18 +71,10 @@ impl Parser {
         Ok(())
     }
 
-    /// ```text
-    /// primary = "(" expr ")" | num
-    /// ```
-    pub fn primary(&mut self) -> Result<Node> {
-        if self.consume("(") {
-            let node = self.expr()?;
-            self.expect(")")?;
-            Ok(node)
-        } else if let TokenKind::Num(num) = self.tok().data {
-            let node = Node::with_num(num, self.tok().loc);
+    pub fn expect_num(&mut self) -> Result<usize> {
+        if let TokenKind::Num(num) = self.tok().data {
             self.next();
-            Ok(node)
+            Ok(num)
         } else {
             Err(Error::CompileError {
                 message: "number is required".into(),
@@ -98,6 +82,29 @@ impl Parser {
                 loc: self.tok().loc,
             })
         }
+    }
+
+    /// ```text
+    /// primary = "(" expr ")" | num
+    /// ```
+    pub fn primary(&mut self) -> Result<Node> {
+        let loc = self.tok().loc;
+
+        let node = if self.consume("(") {
+            let mut node = self.expr()?;
+
+            // The location of the node surrounded by parentheses is
+            // the merge of the both surrounding parentheses locations.
+            let loc = loc + self.tok().loc;
+            self.expect(")")?;
+            node.loc = loc;
+
+            node
+        } else {
+            Node::with_num(self.expect_num()?, loc)
+        };
+
+        Ok(node)
     }
 
     /// ```text

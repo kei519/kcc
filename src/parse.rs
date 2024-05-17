@@ -26,13 +26,13 @@ impl Parser {
     }
 
     /// Returns the current token.
-    pub fn tok(&self) -> &Token {
+    fn tok(&self) -> &Token {
         &self.tokens[self.pos]
     }
 
     /// Advances the cursor if the cursor will not exceed the eof.
     /// Returns `true` if the cursor is advanced.
-    pub fn next(&mut self) -> bool {
+    fn next(&mut self) -> bool {
         if self.tok().data != TokenKind::Eof {
             self.pos += 1;
             true
@@ -41,6 +41,8 @@ impl Parser {
         }
     }
 
+    /// Parses the whole program.
+    ///
     /// ```text
     /// program = stmt*
     /// ```
@@ -54,7 +56,7 @@ impl Parser {
         Ok(Node::with_prog(stmts, self.global_vars))
     }
 
-    pub fn consume(&mut self, op: &str) -> bool {
+    fn consume(&mut self, op: &str) -> bool {
         match self.tok().data {
             TokenKind::Reserved(kw) if kw == op => {
                 self.next();
@@ -64,7 +66,7 @@ impl Parser {
         }
     }
 
-    pub fn expect(&mut self, op: &str) -> Result<()> {
+    fn expect(&mut self, op: &str) -> Result<()> {
         if !self.consume(op) {
             return Err(Error::CompileError {
                 message: format!("expected '{}'", op),
@@ -75,7 +77,7 @@ impl Parser {
         Ok(())
     }
 
-    pub fn expect_num(&mut self) -> Result<usize> {
+    fn expect_num(&mut self) -> Result<usize> {
         if let TokenKind::Num(num) = self.tok().data {
             self.next();
             Ok(num)
@@ -88,7 +90,7 @@ impl Parser {
         }
     }
 
-    pub fn consume_ident(&mut self) -> Option<&'static str> {
+    fn consume_ident(&mut self) -> Option<&'static str> {
         if let TokenKind::Ident(ident) = self.tok().data {
             self.next();
             Some(ident)
@@ -100,7 +102,7 @@ impl Parser {
     /// ```text
     /// primary = "(" expr ")" | ident | num
     /// ```
-    pub fn primary(&mut self) -> Result<Node> {
+    fn primary(&mut self) -> Result<Node> {
         let loc = self.tok().loc;
 
         let node = if self.consume("(") {
@@ -126,7 +128,7 @@ impl Parser {
     /// ```text
     /// unary = ( ("+" | "-") unary ) | primary
     /// ```
-    pub fn unary(&mut self) -> Result<Node> {
+    fn unary(&mut self) -> Result<Node> {
         let loc = self.tok().loc;
 
         let node = if self.consume("+") {
@@ -145,7 +147,7 @@ impl Parser {
     /// ```text
     /// mul = unary ( "*" mul | "/" mul )?
     /// ```
-    pub fn mul(&mut self) -> Result<Node> {
+    fn mul(&mut self) -> Result<Node> {
         let left = self.unary()?;
 
         let node = if self.consume("*") {
@@ -164,7 +166,7 @@ impl Parser {
     /// ```text
     /// add = mul ( "+" add | "-" add )?
     /// ```
-    pub fn add(&mut self) -> Result<Node> {
+    fn add(&mut self) -> Result<Node> {
         let left = self.mul()?;
 
         let node = if self.consume("+") {
@@ -183,7 +185,7 @@ impl Parser {
     /// ```text
     /// relational = add ( "<" relational | "<=" relational | ">" relational | ">=" relational)?
     /// ```
-    pub fn relational(&mut self) -> Result<Node> {
+    fn relational(&mut self) -> Result<Node> {
         let left = self.add()?;
 
         let node = if self.consume("<") {
@@ -208,7 +210,7 @@ impl Parser {
     /// ```text
     /// equality = relational ( "==" equality | "!=" equality )?
     /// ```
-    pub fn equality(&mut self) -> Result<Node> {
+    fn equality(&mut self) -> Result<Node> {
         let left = self.relational()?;
 
         let node = if self.consume("==") {
@@ -227,7 +229,7 @@ impl Parser {
     /// ```text
     /// assign = equality ( "=" assign )?
     /// ```
-    pub fn assign(&mut self) -> Result<Node> {
+    fn assign(&mut self) -> Result<Node> {
         let left = self.equality()?;
 
         let node = if self.consume("=") {
@@ -243,14 +245,14 @@ impl Parser {
     /// ```text
     /// expr = assign
     /// ```
-    pub fn expr(&mut self) -> Result<Node> {
+    fn expr(&mut self) -> Result<Node> {
         self.assign()
     }
 
     /// ```text
     /// stmt = ( "return" )? expr ";"
     /// ```
-    pub fn stmt(&mut self) -> Result<Node> {
+    fn stmt(&mut self) -> Result<Node> {
         let loc = self.tok().loc;
         let node = if self.consume("return") {
             Node::with_unop(UnOpKind::Return, self.expr()?, loc)

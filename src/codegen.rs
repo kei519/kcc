@@ -1,13 +1,9 @@
 use crate::{
     parse::{BinOpKind, Node, NodeKind, UnOpKind},
-    util::{into_err, Error, Result},
+    util::{Error, Result},
 };
 
-use std::{
-    fs::File,
-    io::{self, Write as _},
-    path::Path,
-};
+use std::{fs::File, io::Write as _, path::Path};
 
 /// Generates assembly code for the given `nodes` and writes it to the file at `asm_path`.
 pub fn codegen(nodes: Vec<Node>, asm_path: impl AsRef<Path>) -> Result<()> {
@@ -23,12 +19,12 @@ pub fn codegen(nodes: Vec<Node>, asm_path: impl AsRef<Path>) -> Result<()> {
     };
 
     // Write the prolouge.
-    writeln!(asm_file, ".global main").map_err(into_err)?;
-    writeln!(asm_file, "main:").map_err(into_err)?;
+    writeln!(asm_file, ".global main")?;
+    writeln!(asm_file, "main:")?;
 
     // Write the body.
     for node in nodes {
-        gen(node, &mut asm_file).map_err(into_err)?;
+        gen(node, &mut asm_file)?;
     }
 
     // Write the epilouge.
@@ -37,7 +33,7 @@ pub fn codegen(nodes: Vec<Node>, asm_path: impl AsRef<Path>) -> Result<()> {
 }
 
 /// Generates code for the given `node` and writes it to `file`.
-fn gen(node: Node, file: &mut File) -> io::Result<()> {
+fn gen(node: Node, file: &mut File) -> Result<()> {
     match node.data {
         NodeKind::Num(num) => {
             writeln!(file, "  mov ${}, %rax", num)?;

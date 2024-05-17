@@ -5,6 +5,7 @@ use std::collections::HashSet;
 
 use crate::{
     tokenize::{Token, TokenKind},
+    typing::Type,
     util::{Annot, Error, Loc, Result},
 };
 
@@ -56,20 +57,29 @@ impl Parser {
         Ok(Node::with_prog(stmts, self.global_vars))
     }
 
-    fn consume(&mut self, op: &str) -> bool {
+    /// Consumes the current token if it matches a given string.
+    fn consume(&mut self, s: &str) -> bool {
+        if self.peek(s) {
+            self.next();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Returns `true` if the current token matches a given string.
+    fn peek(&self, s: &str) -> bool {
         match self.tok().data {
-            TokenKind::Reserved(kw) if kw == op => {
-                self.next();
-                true
-            }
+            TokenKind::Reserved(kw) if kw == s => true,
             _ => false,
         }
     }
 
-    fn expect(&mut self, op: &str) -> Result<()> {
-        if !self.consume(op) {
+    /// Ensures that the current token is a given string.
+    fn expect(&mut self, s: &str) -> Result<()> {
+        if !self.consume(s) {
             return Err(Error::CompileError {
-                message: format!("expected '{}'", op),
+                message: format!("expected '{}'", s),
                 input: self.input,
                 loc: self.tok().loc,
             });
@@ -100,6 +110,14 @@ impl Parser {
     }
 
     /// ```text
+    /// basetype = "int"
+    /// ```
+    fn basetype(&mut self) -> Result<Type> {
+        self.expect("int")?;
+        Ok(Type::Int)
+    }
+
+    /// ```text
     /// primary = "(" expr ")" | ident | num
     /// ```
     fn primary(&mut self) -> Result<Node> {
@@ -116,7 +134,13 @@ impl Parser {
 
             node
         } else if let Some(name) = self.consume_ident() {
-            self.global_vars.insert(Var::new(name));
+            if !self.global_vars.iter().any(|var| var.name == name) {
+                return Err(Error::CompileError {
+                    message: "this variable is not declared".into(),
+                    input: self.input,
+                    loc: loc,
+                });
+            }
             Node::with_var(name, loc)
         } else {
             Node::with_num(self.expect_num()?, loc)
@@ -250,10 +274,55 @@ impl Parser {
     }
 
     /// ```text
-    /// stmt = ( "return" )? expr ";"
+    /// declaration = basetype ident ( "=" expr )? ";"
+    /// ```
+    fn decl(&mut self) -> Result<Node> {
+        let loc = self.tok().loc;
+
+        let ty = self.basetype()?;
+
+        let name_loc = self.tok().loc;
+        let Some(name) = self.consume_ident() else {
+            return Err(Error::CompileError {
+                message: "variable name is required".into(),
+                input: self.input,
+                loc: self.tok().loc,
+            });
+        };
+        let var = Node::with_var(name, name_loc);
+
+        let init = if self.consume("=") {
+            Some(self.expr()?)
+        } else {
+            None
+        };
+
+        let loc = loc + self.tok().loc;
+        self.expect(";")?;
+
+        // Declaration of the same name variable multiple times is not allowed.
+        if !self.global_vars.insert(Var::new(name, ty)) {
+            return Err(Error::CompileError {
+                message: "this variable is already declared".into(),
+                input: self.input,
+                loc: name_loc,
+            });
+        };
+
+        Ok(Node::with_var_decl(var, ty, init, loc))
+    }
+
+    /// ```text
+    /// stmt = declaration
+    ///      | ( "return" )? expr ";"
     /// ```
     fn stmt(&mut self) -> Result<Node> {
+        if self.peek("int") {
+            return self.decl();
+        }
+
         let loc = self.tok().loc;
+
         let node = if self.consume("return") {
             Node::with_unop(UnOpKind::Return, self.expr()?, loc)
         } else {
@@ -318,6 +387,13 @@ pub enum NodeKind {
         lhs: Box<Node>,
         rhs: Box<Node>,
     },
+    /// Variable declaration.
+    VarDecl {
+        var: Box<Node>,
+        ty: Type,
+        /// Initial value.
+        init: Option<Box<Node>>,
+    },
     /// Variable.
     Var(&'static str),
     /// Whole program.
@@ -362,6 +438,17 @@ impl Node {
         }
     }
 
+    pub fn with_var_decl(var: Node, ty: Type, init: Option<Node>, loc: Loc) -> Self {
+        Self {
+            data: NodeKind::VarDecl {
+                var: Box::new(var),
+                ty,
+                init: init.map(|node| Box::new(node)),
+            },
+            loc,
+        }
+    }
+
     pub fn with_var(name: &'static str, loc: Loc) -> Self {
         Self {
             data: NodeKind::Var(name),
@@ -394,12 +481,18 @@ impl Node {
 pub struct Var {
     /// Variable name.
     pub name: &'static str,
+    /// Type.
+    pub ty: Type,
     /// Variable offset from RBP.
     pub offset: usize,
 }
 
 impl Var {
-    pub fn new(name: &'static str) -> Self {
-        Self { name, offset: 0 }
+    pub fn new(name: &'static str, ty: Type) -> Self {
+        Self {
+            name,
+            ty,
+            offset: 0,
+        }
     }
 }

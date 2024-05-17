@@ -2,6 +2,7 @@ mod codegen;
 mod config;
 mod parse;
 mod tokenize;
+mod typing;
 mod util;
 
 use codegen::Generator;

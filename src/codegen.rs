@@ -122,6 +122,19 @@ impl<W: Write> Generator<W> {
                 }
                 writeln!(self.writer, "  push %rax")?;
             }
+            NodeKind::VarDecl { var, init, .. } => {
+                let init = if let Some(init) = init {
+                    init
+                } else {
+                    return Ok(());
+                };
+
+                self.gen_addr(*var)?;
+                self.codegen(*init)?;
+                writeln!(self.writer, "  pop %rax")?;
+                writeln!(self.writer, "  pop %rdi")?;
+                writeln!(self.writer, "  mov %rax, (%rdi)")?;
+            }
             NodeKind::Var(_) => {
                 self.gen_addr(node)?;
                 writeln!(self.writer, "  pop %rdi")?;

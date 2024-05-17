@@ -145,5 +145,9 @@ pub fn rand() -> u64 {
     let mut hasher = DefaultHasher::new();
     SystemTime::now().hash(&mut hasher);
     process::id().hash(&mut hasher);
+
+    let maybe_exe_path = env::args().find(|_| true);
+    maybe_exe_path.hash(&mut hasher);
+
     hasher.finish()
 }

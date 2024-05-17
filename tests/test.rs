@@ -211,3 +211,16 @@ fn test37() {
 fn test38() {
     test!(50, "int a = 30; { return 50; } return a;");
 }
+
+#[test]
+fn test39() {
+    test!(10, "int i = 0; while(i < 10) i = i + 1; return i;");
+}
+
+#[test]
+fn test40() {
+    test!(
+        100,
+        "int i = 0; while(i < 100) { int b = 10; i = i+b; } return i;"
+    );
+}

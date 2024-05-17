@@ -15,6 +15,8 @@ pub struct Generator<W: Write> {
     writer: W,
     /// Global variables.
     global_vars: HashSet<Var>,
+    /// The number of jump labels.
+    num_label: usize,
 }
 
 impl Generator<File> {
@@ -25,6 +27,7 @@ impl Generator<File> {
             input,
             writer: file,
             global_vars: HashSet::new(),
+            num_label: 0,
         })
     }
 }
@@ -144,6 +147,17 @@ impl<W: Write> Generator<W> {
                 for stmt in stmts {
                     self.codegen(stmt)?;
                 }
+            }
+            NodeKind::While { cond, stmt } => {
+                writeln!(self.writer, ".L.start.{}:", self.num_label)?;
+                self.codegen(*cond)?;
+                writeln!(self.writer, "  pop %rax")?;
+                writeln!(self.writer, "  test %rax, %rax")?;
+                writeln!(self.writer, "  je .L.end.{}", self.num_label)?;
+                self.codegen(*stmt)?;
+                writeln!(self.writer, "  jmp .L.start.{}", self.num_label)?;
+                writeln!(self.writer, ".L.end.{}:", self.num_label)?;
+                self.num_label += 1;
             }
             NodeKind::Program { stmts, global_vars } => {
                 // Determins the offset of each global variable.

@@ -316,6 +316,7 @@ impl Parser {
     /// stmt = declaration
     ///      | block = "{" stmt* "}"
     ///      | ( "return" )? expr ";"
+    ///      | "while" "(" expr ")" stmt
     /// ```
     fn stmt(&mut self) -> Result<Node> {
         if self.peek("int") {
@@ -342,6 +343,15 @@ impl Parser {
                 loc += self.tok().loc;
             }
             return Ok(Node::with_block(stmts, loc));
+        } else if self.consume("while") {
+            self.expect("(")?;
+            let cond = self.expr()?;
+            self.expect(")")?;
+
+            let stmt = self.stmt()?;
+            let loc = loc + stmt.loc;
+
+            return Ok(Node::with_while(cond, stmt, loc));
         }
 
         let node = if self.consume("return") {
@@ -419,6 +429,8 @@ pub enum NodeKind {
     Var(&'static str),
     /// Block.
     Block { stmts: Vec<Node> },
+    /// while.
+    While { cond: Box<Node>, stmt: Box<Node> },
     /// Whole program.
     Program {
         stmts: Vec<Node>,
@@ -482,6 +494,16 @@ impl Node {
     pub fn with_block(stmts: Vec<Node>, loc: Loc) -> Self {
         Self {
             data: NodeKind::Block { stmts },
+            loc,
+        }
+    }
+
+    pub fn with_while(cond: Node, stmt: Node, loc: Loc) -> Self {
+        Self {
+            data: NodeKind::While {
+                cond: Box::new(cond),
+                stmt: Box::new(stmt),
+            },
             loc,
         }
     }

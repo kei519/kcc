@@ -140,6 +140,11 @@ impl<W: Write> Generator<W> {
                 writeln!(self.writer, "  pop %rdi")?;
                 writeln!(self.writer, "  push (%rdi)")?;
             }
+            NodeKind::Block { stmts } => {
+                for stmt in stmts {
+                    self.codegen(stmt)?;
+                }
+            }
             NodeKind::Program { stmts, global_vars } => {
                 // Determins the offset of each global variable.
                 let mut offset = 0;

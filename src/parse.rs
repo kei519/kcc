@@ -314,6 +314,7 @@ impl Parser {
 
     /// ```text
     /// stmt = declaration
+    ///      | block = "{" stmt* "}"
     ///      | ( "return" )? expr ";"
     /// ```
     fn stmt(&mut self) -> Result<Node> {
@@ -322,6 +323,26 @@ impl Parser {
         }
 
         let loc = self.tok().loc;
+
+        // Recognizes a block.
+        if self.consume("{") {
+            let mut stmts = vec![];
+            let brace_loc = loc;
+            let mut loc = loc + self.tok().loc;
+
+            while !self.consume("}") {
+                if self.tok().data == TokenKind::Eof {
+                    return Err(Error::CompileError {
+                        message: "this brace is not closed".into(),
+                        input: self.input,
+                        loc: brace_loc,
+                    });
+                }
+                stmts.push(self.stmt()?);
+                loc += self.tok().loc;
+            }
+            return Ok(Node::with_block(stmts, loc));
+        }
 
         let node = if self.consume("return") {
             Node::with_unop(UnOpKind::Return, self.expr()?, loc)
@@ -396,6 +417,8 @@ pub enum NodeKind {
     },
     /// Variable.
     Var(&'static str),
+    /// Block.
+    Block { stmts: Vec<Node> },
     /// Whole program.
     Program {
         stmts: Vec<Node>,
@@ -452,6 +475,13 @@ impl Node {
     pub fn with_var(name: &'static str, loc: Loc) -> Self {
         Self {
             data: NodeKind::Var(name),
+            loc,
+        }
+    }
+
+    pub fn with_block(stmts: Vec<Node>, loc: Loc) -> Self {
+        Self {
+            data: NodeKind::Block { stmts },
             loc,
         }
     }

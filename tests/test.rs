@@ -201,3 +201,13 @@ fn test35() {
 fn test36() {
     test!(1, "int a; a = 1; return a;");
 }
+
+#[test]
+fn test37() {
+    test!(30, "int a = 30; { 50; } return a;");
+}
+
+#[test]
+fn test38() {
+    test!(50, "int a = 30; { return 50; } return a;");
+}

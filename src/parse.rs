@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests;
 
+use std::collections::HashSet;
+
 use crate::{
     tokenize::{Token, TokenKind},
     util::{Annot, Error, Loc, Result},
@@ -9,6 +11,7 @@ use crate::{
 pub struct Parser {
     input: &'static str,
     tokens: Vec<Token>,
+    global_vars: HashSet<Var>,
     pos: usize,
 }
 
@@ -17,6 +20,7 @@ impl Parser {
         Self {
             input,
             tokens,
+            global_vars: HashSet::new(),
             pos: 0,
         }
     }
@@ -47,7 +51,7 @@ impl Parser {
             stmts.push(self.stmt()?);
         }
 
-        Ok(Node::with_prog(stmts))
+        Ok(Node::with_prog(stmts, self.global_vars))
     }
 
     pub fn consume(&mut self, op: &str) -> bool {
@@ -84,8 +88,17 @@ impl Parser {
         }
     }
 
+    pub fn consume_ident(&mut self) -> Option<&'static str> {
+        if let TokenKind::Ident(ident) = self.tok().data {
+            self.next();
+            Some(ident)
+        } else {
+            None
+        }
+    }
+
     /// ```text
-    /// primary = "(" expr ")" | num
+    /// primary = "(" expr ")" | ident | num
     /// ```
     pub fn primary(&mut self) -> Result<Node> {
         let loc = self.tok().loc;
@@ -100,6 +113,9 @@ impl Parser {
             node.loc = loc;
 
             node
+        } else if let Some(name) = self.consume_ident() {
+            self.global_vars.insert(Var::new(name));
+            Node::with_var(name, loc)
         } else {
             Node::with_num(self.expect_num()?, loc)
         };
@@ -209,10 +225,26 @@ impl Parser {
     }
 
     /// ```text
-    /// expr = equality
+    /// assign = equality ( "=" assign )?
+    /// ```
+    pub fn assign(&mut self) -> Result<Node> {
+        let left = self.equality()?;
+
+        let node = if self.consume("=") {
+            let right = self.assign()?;
+            Node::with_binop(BinOpKind::Assign, left, right)
+        } else {
+            left
+        };
+
+        Ok(node)
+    }
+
+    /// ```text
+    /// expr = assign
     /// ```
     pub fn expr(&mut self) -> Result<Node> {
-        self.equality()
+        self.assign()
     }
 
     /// ```text
@@ -267,6 +299,8 @@ pub enum BinOpKind {
     Eq,
     /// !=
     Ne,
+    /// =
+    Assign,
 }
 
 /// Represents a node in AST.
@@ -282,8 +316,13 @@ pub enum NodeKind {
         lhs: Box<Node>,
         rhs: Box<Node>,
     },
+    /// Variable.
+    Var(&'static str),
     /// Whole program.
-    Program { stmts: Vec<Node> },
+    Program {
+        stmts: Vec<Node>,
+        global_vars: HashSet<Var>,
+    },
 }
 
 pub type Node = Annot<NodeKind>;
@@ -321,7 +360,14 @@ impl Node {
         }
     }
 
-    pub fn with_prog(stmts: Vec<Node>) -> Self {
+    pub fn with_var(name: &'static str, loc: Loc) -> Self {
+        Self {
+            data: NodeKind::Var(name),
+            loc,
+        }
+    }
+
+    pub fn with_prog(stmts: Vec<Node>, global_vars: HashSet<Var>) -> Self {
         // If there are some statements, the location is the merge of the first and the last.
         // Otherwise, the location is at the begginning, 0.
         let loc = if let Some(first) = stmts.first() {
@@ -335,8 +381,23 @@ impl Node {
         };
 
         Self {
-            data: NodeKind::Program { stmts },
+            data: NodeKind::Program { stmts, global_vars },
             loc,
         }
+    }
+}
+
+/// Represets variable.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Var {
+    /// Variable name.
+    pub name: &'static str,
+    /// Variable offset from RBP.
+    pub offset: usize,
+}
+
+impl Var {
+    pub fn new(name: &'static str) -> Self {
+        Self { name, offset: 0 }
     }
 }

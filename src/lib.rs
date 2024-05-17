@@ -44,7 +44,7 @@ where
 
     // Generate assembly.
     let asm_path = mktemp()?;
-    let mut gen = Generator::from_path(&asm_path)?;
+    let mut gen = Generator::from_path(input, &asm_path)?;
     gen.codegen(top_node)?;
 
     // Assemble the assembly.

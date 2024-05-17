@@ -163,3 +163,33 @@ fn test28() {
 fn test29() {
     test!(3, "1; 2; return 3;");
 }
+
+#[test]
+fn test30() {
+    test!(3, "a=3; return a;");
+}
+
+#[test]
+fn test31() {
+    test!(8, "a=3; z=5; return a+z;");
+}
+
+#[test]
+fn test32() {
+    test!(12, "a = b = 6; return a + b;");
+}
+
+#[test]
+fn test33() {
+    test!(3, "foo=3; return foo;");
+}
+
+#[test]
+fn test34() {
+    test!(8, "foo123=3; bar=5; return foo123+bar;");
+}
+
+#[test]
+fn test35() {
+    test!(123, "foo = bar = 50; baz = 23; return foo + bar + baz;");
+}

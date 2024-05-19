@@ -49,7 +49,11 @@ where
     gen.codegen(top_node)?;
 
     // Assemble the assembly.
-    assemble(asm_path, config.out_path.unwrap_or(DEFAULT_OUTPUT.into()))?;
+    assemble(
+        asm_path,
+        config.obj_paths,
+        config.out_path.unwrap_or(DEFAULT_OUTPUT.into()),
+    )?;
 
     Ok(())
 }

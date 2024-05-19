@@ -102,13 +102,24 @@ impl From<io::Error> for Error {
 }
 
 /// Assemble the given assemly code located at `asm_path` into a executable located at `out_path`.
-pub fn assemble(asm_path: impl AsRef<Path>, out_path: impl AsRef<Path>) -> Result<()> {
-    let output = process::Command::new("gcc")
-        .arg("-o")
-        .arg(out_path.as_ref())
-        .arg("-xassembler")
-        .arg(asm_path.as_ref())
-        .output()?;
+pub fn assemble<T>(
+    asm_path: impl AsRef<Path>,
+    obj_paths: impl IntoIterator<Item = T>,
+    out_path: impl AsRef<Path>,
+) -> Result<()>
+where
+    T: AsRef<Path>,
+{
+    let mut cmd = process::Command::new("gcc");
+    cmd.arg("-static").arg("-o").arg(out_path.as_ref());
+
+    for obj in obj_paths {
+        cmd.arg(obj.as_ref());
+    }
+
+    cmd.arg("-xassembler").arg(asm_path.as_ref());
+
+    let output = cmd.output()?;
 
     if !output.status.success() {
         return Err(Error::Any(format!(

@@ -8,6 +8,7 @@ mod test;
 pub struct Config {
     pub input: String,
     pub out_path: Option<String>,
+    pub obj_paths: Vec<String>,
 }
 
 impl Config {
@@ -22,6 +23,7 @@ impl Config {
 
         let mut input = None;
         let mut out_path = None;
+        let mut obj_paths = vec![];
 
         while !args.is_empty() {
             // This unwrapping always succeed due to the condition above.
@@ -53,6 +55,20 @@ impl Config {
                 continue;
             }
 
+            // check "--obj" option.
+            // This option is temprorary one for link the input program and some object files.
+            if arg == "--obj" {
+                match args.pop_front() {
+                    Some(path) => obj_paths.push(path.into()),
+                    None => {
+                        eprintln!(r#"object file path is required after "--obj" option"#);
+                        usage(true)?;
+                        unreachable!();
+                    }
+                }
+                continue;
+            }
+
             // Check "--help" option.
             if arg.starts_with("-h") || arg.starts_with("--help") {
                 usage(false)?;
@@ -74,7 +90,11 @@ impl Config {
             unreachable!();
         };
 
-        Ok(Self { input, out_path })
+        Ok(Self {
+            input,
+            out_path,
+            obj_paths,
+        })
     }
 }
 

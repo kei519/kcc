@@ -1,4 +1,9 @@
-use std::process::Command;
+use std::{
+    hint,
+    io::Write as _,
+    process::{Command, Stdio},
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 /// Run a test with the given input and asserts the exit code and the expected.
 macro_rules! test {
@@ -7,15 +12,66 @@ macro_rules! test {
     };
 }
 
+static OBJ_IS_BUILD: AtomicBool = AtomicBool::new(false);
+
+static OBJ_IS_BUILDING: AtomicBool = AtomicBool::new(false);
+
+const OBJ_PATH: &'static str = "tmp/tmp.o";
+
 /// Run a test with the given input and returns the exit code.
 fn run_test(input: impl Into<String>) -> i32 {
+    while !OBJ_IS_BUILD.load(Ordering::Acquire) {
+        if OBJ_IS_BUILDING
+            .compare_exchange_weak(false, true, Ordering::Relaxed, Ordering::Relaxed)
+            .is_err()
+        {
+            hint::spin_loop();
+            continue;
+        }
+        build_obj();
+        OBJ_IS_BUILD.store(true, Ordering::Release);
+    }
+
     let test_file = kcc::mktemp().unwrap();
-    kcc::main(["-o", test_file.to_str().unwrap(), input.into().as_str()]).unwrap();
+    kcc::main([
+        "-o",
+        test_file.to_str().unwrap(),
+        "--obj",
+        OBJ_PATH,
+        input.into().as_str(),
+    ])
+    .unwrap();
     let result = Command::new(test_file).output().unwrap();
     if let Some(exit) = result.status.code() {
         exit
     } else {
         panic!("{}", result.status);
+    }
+}
+
+fn build_obj() {
+    let mut proc = Command::new("gcc")
+        .arg("-c")
+        .arg("-xc")
+        .arg(format!("-o{}", OBJ_PATH))
+        .arg("-")
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let code = r"
+int ret3() { return 3; }
+int ret5() { return 5; }
+int add(int x, int y) { return x+y; }
+int sub(int x, int y) { return x-y; }
+
+int add6(int a, int b, int c, int d, int e, int f) {
+    return a+b+c+d+e+f;
+}";
+    writeln!(proc.stdin.as_ref().unwrap(), "{}", code).unwrap();
+
+    if proc.wait().is_err() {
+        panic!("cannot build object file");
     }
 }
 
@@ -292,4 +348,29 @@ fn test50() {
         "if (0) { return 1; } else if (0) { return 2; }
             else if (1) { return 4; } else { return 3; }"
     );
+}
+
+#[test]
+fn test51() {
+    test!(3, "return ret3();");
+}
+
+#[test]
+fn test52() {
+    test!(5, "return ret5();");
+}
+
+#[test]
+fn test53() {
+    test!(8, "return add(3, 5);");
+}
+
+#[test]
+fn test54() {
+    test!(2, "return sub(5, 3);");
+}
+
+#[test]
+fn test55() {
+    test!(21, "return add6(1, 2, 3, 4, 5, 6);");
 }

@@ -8,6 +8,7 @@ use std::{
     path::{Path, PathBuf},
     process,
     time::SystemTime,
+    sync::atomic::{AtomicU32, Ordering},
 };
 
 use crate::PROG_NAME;
@@ -153,12 +154,12 @@ pub fn mktemp() -> io::Result<PathBuf> {
 
 /// Generates a [u64] random number using the current time and process ID.
 pub fn rand() -> u64 {
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+
     let mut hasher = DefaultHasher::new();
     SystemTime::now().hash(&mut hasher);
     process::id().hash(&mut hasher);
-
-    let maybe_exe_path = env::args().find(|_| true);
-    maybe_exe_path.hash(&mut hasher);
+    COUNTER.fetch_add(1, Ordering::Relaxed).hash(&mut hasher);
 
     hasher.finish()
 }

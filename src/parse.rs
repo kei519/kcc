@@ -118,7 +118,23 @@ impl Parser {
     }
 
     /// ```text
-    /// primary = "(" expr ")" | ident | num
+    /// func-args = ( assign ( "," assign )* )?
+    /// ```
+    fn func_args(&mut self) -> Result<Vec<Node>> {
+        let Ok(arg) = self.assign() else {
+            return Ok(vec![]);
+        };
+        let mut args = vec![arg];
+
+        while self.consume(",") {
+            args.push(self.assign()?);
+        }
+
+        Ok(args)
+    }
+
+    /// ```text
+    /// primary = "(" expr ")" | ident ( "(" func-args ")" )? | num
     /// ```
     fn primary(&mut self) -> Result<Node> {
         let loc = self.tok().loc;
@@ -134,6 +150,17 @@ impl Parser {
 
             node
         } else if let Some(name) = self.consume_ident() {
+            if self.consume("(") {
+                let args = self.func_args()?;
+
+                // The location of the function call is between function name
+                // and close parentesis.
+                let loc = loc + self.tok().loc;
+                self.expect(")")?;
+
+                return Ok(Node::with_fn_call(name, args, loc));
+            }
+
             if !self.global_vars.iter().any(|var| var.name == name) {
                 return Err(Error::CompileError {
                     message: "this variable is not declared".into(),
@@ -503,6 +530,8 @@ pub enum NodeKind {
         elif_stmts: Vec<Node>,
         else_stmt: Option<Box<Node>>,
     },
+    /// Function call.
+    FnCall { name: &'static str, args: Vec<Node> },
     /// Whole program.
     Program {
         stmts: Vec<Node>,
@@ -619,6 +648,13 @@ impl Node {
                 elif_stmts,
                 else_stmt: else_stmt.map(|node| Box::new(node)),
             },
+            loc,
+        }
+    }
+
+    pub fn with_fn_call(name: &'static str, args: Vec<Node>, loc: Loc) -> Self {
+        Self {
+            data: NodeKind::FnCall { name, args },
             loc,
         }
     }

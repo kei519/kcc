@@ -8,6 +8,9 @@ use std::{collections::HashSet, fs::File, io::Write, mem::size_of, path::Path};
 /// Represents the size of a word in bytes.
 const WORD_SIZE: usize = size_of::<usize>();
 
+/// Registers used to pass function variables.
+const ARG_REG: [&'static str; 6] = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
+
 /// Represents an assembly code generator that writes to a writer.
 pub struct Generator<W: Write> {
     input: &'static str,
@@ -218,6 +221,42 @@ impl<W: Write> Generator<W> {
                 }
 
                 writeln!(self.writer, ".L.end.{}:", self.num_label)?;
+
+                self.num_label += 1;
+            }
+            NodeKind::FnCall { name, args } => {
+                // Args passed with the stack is not yet supported.
+                if args.len() > ARG_REG.len() {
+                    return Err(Error::CompileError {
+                        message: format!(
+                            "function call with {} or more args is not supported",
+                            ARG_REG.len() + 1
+                        ),
+                        input: self.input,
+                        loc: args[ARG_REG.len()].loc,
+                    });
+                }
+
+                let num_args = args.len();
+                for arg in args {
+                    self.codegen(arg)?;
+                }
+                for i in (0..num_args).rev() {
+                    writeln!(self.writer, "  pop %{}", ARG_REG[i])?;
+                }
+
+                // Ensure that RSP is 16-byte boundary.
+                writeln!(self.writer, "  mov %rsp, %rax")?;
+                writeln!(self.writer, "  and $15, %rax")?;
+                writeln!(self.writer, "  jz .L.call.{}", self.num_label)?;
+                writeln!(self.writer, "  call {}", name)?;
+                writeln!(self.writer, "  jmp .L.end.{}", self.num_label)?;
+                writeln!(self.writer, ".L.call.{}:", self.num_label)?;
+                writeln!(self.writer, "  sub $8, %rsp")?;
+                writeln!(self.writer, "  call {}", name)?;
+                writeln!(self.writer, "  add $8, %rsp")?;
+                writeln!(self.writer, ".L.end.{}:", self.num_label)?;
+                writeln!(self.writer, "  push %rax")?;
 
                 self.num_label += 1;
             }

@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashSet;
+use std::{collections::HashSet, mem};
 
 use crate::{
     tokenize::{Token, TokenKind},
@@ -12,7 +12,7 @@ use crate::{
 pub struct Parser {
     input: &'static str,
     tokens: Vec<Token>,
-    global_vars: HashSet<Var>,
+    locals: HashSet<Var>,
     pos: usize,
 }
 
@@ -21,7 +21,7 @@ impl Parser {
         Self {
             input,
             tokens,
-            global_vars: HashSet::new(),
+            locals: HashSet::new(),
             pos: 0,
         }
     }
@@ -45,16 +45,16 @@ impl Parser {
     /// Parses the whole program.
     ///
     /// ```text
-    /// program = stmt*
+    /// program = function*
     /// ```
     pub fn parse(mut self) -> Result<Node> {
-        let mut stmts = vec![];
+        let mut funcs = vec![];
 
         while TokenKind::Eof != self.tok().data {
-            stmts.push(self.stmt()?);
+            funcs.push(self.function()?);
         }
 
-        Ok(Node::with_prog(stmts, self.global_vars))
+        Ok(Node::with_prog(funcs))
     }
 
     /// Consumes the current token if it matches a given string.
@@ -109,6 +109,14 @@ impl Parser {
         }
     }
 
+    fn expect_ident(&mut self) -> Result<&'static str> {
+        self.consume_ident().ok_or(Error::CompileError {
+            message: "identifier is required".into(),
+            input: self.input,
+            loc: self.tok().loc,
+        })
+    }
+
     /// ```text
     /// basetype = "int"
     /// ```
@@ -131,6 +139,32 @@ impl Parser {
         }
 
         Ok(args)
+    }
+
+    /// ```text
+    /// param = basetype ident
+    /// ```
+    fn param(&mut self) -> Result<Var> {
+        let ty = self.basetype()?;
+        let name = self.expect_ident()?;
+        // Pushes in locals because parameters are the same as locals.
+        self.locals.insert(Var::new(name, ty));
+        Ok(Var::new(name, ty))
+    }
+
+    /// ```text
+    /// params = param ( "," param )*
+    /// ```
+    fn params(&mut self) -> Result<Vec<Var>> {
+        let Ok(param) = self.param() else {
+            return Ok(vec![]);
+        };
+        let mut params = vec![param];
+
+        while self.consume(",") {
+            params.push(self.param()?);
+        }
+        Ok(params)
     }
 
     /// ```text
@@ -161,7 +195,7 @@ impl Parser {
                 return Ok(Node::with_fn_call(name, args, loc));
             }
 
-            if !self.global_vars.iter().any(|var| var.name == name) {
+            if !self.locals.iter().any(|var| var.name == name) {
                 return Err(Error::CompileError {
                     message: "this variable is not declared".into(),
                     input: self.input,
@@ -328,7 +362,7 @@ impl Parser {
         self.expect(";")?;
 
         // Declaration of the same name variable multiple times is not allowed.
-        if !self.global_vars.insert(Var::new(name, ty)) {
+        if !self.locals.insert(Var::new(name, ty)) {
             return Err(Error::CompileError {
                 message: "this variable is already declared".into(),
                 input: self.input,
@@ -447,6 +481,39 @@ impl Parser {
 
         Ok(node)
     }
+
+    /// ```text
+    /// function = basetype ident "(" params? ")" "{" stmt* "}"
+    /// ```
+    fn function(&mut self) -> Result<Node> {
+        let loc = self.tok().loc;
+
+        let ty = self.basetype()?;
+        let name = self.expect_ident()?;
+
+        self.expect("(")?;
+        let params = self.params()?;
+        self.expect(")")?;
+
+        self.expect("{")?;
+        let mut stmts = vec![];
+
+        let loc = loop {
+            let loc = loc + self.tok().loc;
+            if self.consume("}") {
+                break loc;
+            }
+            stmts.push(self.stmt()?);
+        };
+
+        for param in &params {
+            self.locals.remove(param);
+        }
+        let locals = mem::replace(&mut self.locals, HashSet::new())
+            .into_iter()
+            .collect();
+        Ok(Node::with_fn(name, ty, params, stmts, locals, loc))
+    }
 }
 
 /// Represents a unary operator.
@@ -532,11 +599,16 @@ pub enum NodeKind {
     },
     /// Function call.
     FnCall { name: &'static str, args: Vec<Node> },
-    /// Whole program.
-    Program {
+    /// Function.
+    Fn {
+        name: &'static str,
+        return_ty: Type,
+        params: Vec<Var>,
         stmts: Vec<Node>,
-        global_vars: HashSet<Var>,
+        locals: Vec<Var>,
     },
+    /// Whole program.
+    Program { funcs: Vec<Node> },
 }
 
 pub type Node = Annot<NodeKind>;
@@ -659,11 +731,31 @@ impl Node {
         }
     }
 
-    pub fn with_prog(stmts: Vec<Node>, global_vars: HashSet<Var>) -> Self {
-        // If there are some statements, the location is the merge of the first and the last.
+    pub fn with_fn(
+        name: &'static str,
+        return_ty: Type,
+        params: Vec<Var>,
+        stmts: Vec<Node>,
+        locals: Vec<Var>,
+        loc: Loc,
+    ) -> Self {
+        Self {
+            data: NodeKind::Fn {
+                name,
+                return_ty,
+                params,
+                stmts,
+                locals,
+            },
+            loc,
+        }
+    }
+
+    pub fn with_prog(funcs: Vec<Node>) -> Self {
+        // If there are some functions, the location is the merge of the first and the last.
         // Otherwise, the location is at the begginning, 0.
-        let loc = if let Some(first) = stmts.first() {
-            if let Some(last) = stmts.last() {
+        let loc = if let Some(first) = funcs.first() {
+            if let Some(last) = funcs.last() {
                 first.loc + last.loc
             } else {
                 first.loc
@@ -673,7 +765,7 @@ impl Node {
         };
 
         Self {
-            data: NodeKind::Program { stmts, global_vars },
+            data: NodeKind::Program { funcs },
             loc,
         }
     }

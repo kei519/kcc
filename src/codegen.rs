@@ -17,7 +17,7 @@ pub struct Generator<W: Write> {
     /// Writer to write a generated assembly code.
     writer: W,
     /// Global variables.
-    global_vars: HashSet<Var>,
+    locals: HashSet<Var>,
     /// The number of jump labels.
     num_label: usize,
 }
@@ -29,7 +29,7 @@ impl Generator<File> {
         Ok(Self {
             input,
             writer: file,
-            global_vars: HashSet::new(),
+            locals: HashSet::new(),
             num_label: 0,
         })
     }
@@ -260,20 +260,39 @@ impl<W: Write> Generator<W> {
 
                 self.num_label += 1;
             }
-            NodeKind::Program { stmts, global_vars } => {
-                // Determins the offset of each global variable.
-                let mut offset = 0;
-                for mut global_var in global_vars {
-                    offset += WORD_SIZE;
-                    global_var.offset = offset;
-                    self.global_vars.insert(global_var);
-                }
+            NodeKind::Fn {
+                name,
+                params,
+                stmts,
+                locals,
+                ..
+            } => {
+                // Reset the locals.
+                self.locals.clear();
 
                 // Write the prolouge.
-                writeln!(self.writer, ".global main")?;
-                writeln!(self.writer, "main:")?;
+                writeln!(self.writer, ".global {}", name)?;
+                writeln!(self.writer, "{}:", name)?;
                 writeln!(self.writer, "  push %rbp")?;
                 writeln!(self.writer, "  mov %rsp, %rbp")?;
+
+                // Determins the offset of each local variables.
+                let mut offset = 0;
+
+                // Copy the arguments to the stack.
+                for (i, mut param) in params.into_iter().enumerate() {
+                    offset += WORD_SIZE;
+                    param.offset = offset;
+                    self.locals.insert(param);
+                    writeln!(self.writer, "  mov %{}, -{}(%rbp)", ARG_REG[i], offset)?;
+                }
+
+                for mut local in locals {
+                    offset += WORD_SIZE;
+                    local.offset = offset;
+                    self.locals.insert(local);
+                }
+
                 // Allocates memory for global variables.
                 if offset != 0 {
                     writeln!(self.writer, "  sub ${}, %rsp", offset)?;
@@ -281,6 +300,11 @@ impl<W: Write> Generator<W> {
 
                 for stmt in stmts {
                     self.codegen(stmt)?;
+                }
+            }
+            NodeKind::Program { funcs } => {
+                for func in funcs {
+                    self.codegen(func)?;
                 }
             }
         }
@@ -291,7 +315,7 @@ impl<W: Write> Generator<W> {
     fn gen_addr(&mut self, node: Node) -> Result<()> {
         match node.data {
             NodeKind::Var(name) => {
-                if let Some(var) = (&self.global_vars).into_iter().find(|v| v.name == name) {
+                if let Some(var) = (&self.locals).into_iter().find(|v| v.name == name) {
                     writeln!(self.writer, "  lea -{}(%rbp), %rdi", var.offset)?;
                     writeln!(self.writer, "  push %rdi")?;
                     Ok(())

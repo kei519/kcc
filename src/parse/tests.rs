@@ -17,12 +17,12 @@ fn test_one_num() {
         Token::with_eof(Loc::at(2)),
     ];
     let top_node = Parser::new("10", tokens).parse().unwrap();
-    let NodeKind::Program { stmts, .. } = top_node.data else {
+    let NodeKind::Program { funcs, .. } = top_node.data else {
         panic!("Expected NodeKind::Program, but got {:?}", top_node.data);
     };
 
-    assert_eq!(stmts[0].data, NodeKind::Num(10));
-    assert_eq!(stmts[0].loc, Loc::range(0, 2));
+    assert_eq!(funcs[0].data, NodeKind::Num(10));
+    assert_eq!(funcs[0].loc, Loc::range(0, 2));
 }
 
 #[test]

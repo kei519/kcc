@@ -118,11 +118,17 @@ impl Parser {
     }
 
     /// ```text
-    /// basetype = "int"
+    /// basetype = "int" "*"*
     /// ```
     fn basetype(&mut self) -> Result<Type> {
         self.expect("int")?;
-        Ok(Type::Int)
+        let mut ty = Type::Int;
+
+        while self.consume("*") {
+            ty = Type::Ptr(Box::new(ty));
+        }
+
+        Ok(ty)
     }
 
     /// ```text
@@ -148,7 +154,7 @@ impl Parser {
         let ty = self.basetype()?;
         let name = self.expect_ident()?;
         // Pushes in locals because parameters are the same as locals.
-        self.locals.insert(Var::new(name, ty));
+        self.locals.insert(Var::new(name, ty.clone()));
         Ok(Var::new(name, ty))
     }
 
@@ -362,7 +368,7 @@ impl Parser {
         self.expect(";")?;
 
         // Declaration of the same name variable multiple times is not allowed.
-        if !self.locals.insert(Var::new(name, ty)) {
+        if !self.locals.insert(Var::new(name, ty.clone())) {
             return Err(Error::CompileError {
                 message: "this variable is already declared".into(),
                 input: self.input,

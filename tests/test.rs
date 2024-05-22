@@ -538,3 +538,83 @@ fn test78() {
         "int main() { int x[2][3]; int *y=x; *(y+6)=6; return **(x+2); }"
     );
 }
+
+#[test]
+fn test79() {
+    test!(
+        3,
+        "int main() { int x[3]; *x=3; x[1]=4; x[2]=5; return *x; }"
+    );
+}
+
+#[test]
+fn test80() {
+    test!(
+        4,
+        "int main() { int x[3]; *x=3; x[1]=4; x[2]=5; return *(x+1); }"
+    );
+}
+
+#[test]
+fn test81() {
+    test!(
+        5,
+        "int main() { int x[3]; *x=3; x[1]=4; x[2]=5; return *(x+2); }"
+    );
+}
+
+#[test]
+fn test82() {
+    test!(
+        0,
+        "int main() { int x[2][3]; int *y=x; y[0]=0; return x[0][0]; }"
+    );
+}
+
+#[test]
+fn test83() {
+    test!(
+        1,
+        "int main() { int x[2][3]; int *y=x; y[1]=1; return x[0][1]; }"
+    );
+}
+
+#[test]
+fn test84() {
+    test!(
+        2,
+        "int main() { int x[2][3]; int *y=x; y[2]=2; return x[0][2]; }"
+    );
+}
+
+#[test]
+fn test85() {
+    test!(
+        3,
+        "int main() { int x[2][3]; int *y=x; y[3]=3; return x[1][0]; }"
+    );
+}
+
+#[test]
+fn test86() {
+    test!(
+        4,
+        "int main() { int x[2][3]; int *y=x; y[4]=4; return x[1][1]; }"
+    );
+}
+
+#[test]
+fn test87() {
+    test!(
+        5,
+        "int main() { int x[2][3]; int *y=x; y[5]=5; return x[1][2]; }"
+    );
+}
+
+#[test]
+fn test88() {
+    test!(
+        6,
+        "int main() { int x[2][3]; int *y=x; y[6]=6; return x[2][0]; }"
+    );
+}

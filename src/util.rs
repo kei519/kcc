@@ -7,8 +7,8 @@ use std::{
     ops::{Add, AddAssign},
     path::{Path, PathBuf},
     process,
-    time::SystemTime,
     sync::atomic::{AtomicU32, Ordering},
+    time::SystemTime,
 };
 
 use crate::PROG_NAME;
@@ -49,13 +49,6 @@ impl AddAssign for Loc {
         self.start = cmp::min(self.start, rhs.start);
         self.end = cmp::max(self.end, rhs.end);
     }
-}
-
-/// Represents data annotated with a location.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Annot<T> {
-    pub data: T,
-    pub loc: Loc,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

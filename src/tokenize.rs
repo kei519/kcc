@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::util::{Annot, Error, Loc, Result};
+use crate::util::{Error, Loc, Result};
 
 const KW: [&'static str; 22] = [
     "==", "!=", "<=", ">=", "+", "-", "*", "/", "(", ")", "<", ">", ";", ",", ".", ":", "[", "]",
@@ -157,7 +157,11 @@ pub enum TokenKind {
     Eof,
 }
 
-pub type Token = Annot<TokenKind>;
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Token {
+    pub data: TokenKind,
+    pub loc: Loc,
+}
 
 impl Token {
     pub fn with_num(num: usize, loc: Loc) -> Self {

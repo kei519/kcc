@@ -5,8 +5,8 @@ use std::mem;
 
 use crate::{
     tokenize::{Token, TokenKind},
-    typing::Type,
-    util::{Annot, Error, Loc, Result},
+    typing::{Type, TypeKind},
+    util::{Error, Loc, Result},
 };
 
 pub struct Parser {
@@ -135,10 +135,10 @@ impl Parser {
     /// ```
     fn basetype(&mut self) -> Result<Type> {
         self.expect("int")?;
-        let mut ty = Type::Int;
+        let mut ty = Type::new(TypeKind::Int);
 
         while self.consume("*") {
-            ty = Type::Ptr(Box::new(ty));
+            ty = Type::with_ptr(ty);
         }
 
         Ok(ty)
@@ -225,17 +225,22 @@ impl Parser {
                 let loc = loc + self.tok().loc;
                 self.expect(")")?;
 
-                return Ok(Node::with_fn_call(name, args, loc));
+                return Ok(Node::with_fn_call(
+                    name,
+                    Type::new(TypeKind::Int),
+                    args,
+                    loc,
+                ));
             }
 
-            if !self.locals.iter().any(|var| var.name == name) {
+            let Some(var) = self.locals.iter().find(|var| var.name == name) else {
                 return Err(Error::CompileError {
                     message: "this variable is not declared".into(),
                     input: self.input,
                     loc: loc,
                 });
-            }
-            Node::with_var(name, loc)
+            };
+            Node::with_var(name, var.ty.clone(), loc)
         } else {
             Node::with_num(self.expect_num()?, loc)
         };
@@ -274,6 +279,7 @@ impl Parser {
     fn mul(&mut self) -> Result<Node> {
         let left = self.unary()?;
 
+        let op_loc = self.tok().loc;
         let node = if self.consume("*") {
             let right = self.mul()?;
             Node::with_binop(BinOpKind::Mul, left, right)
@@ -281,8 +287,9 @@ impl Parser {
             let right = self.mul()?;
             Node::with_binop(BinOpKind::Div, left, right)
         } else {
-            left
-        };
+            Some(left)
+        }
+        .ok_or_else(|| binop_err(self.input, op_loc))?;
 
         Ok(node)
     }
@@ -293,6 +300,7 @@ impl Parser {
     fn add(&mut self) -> Result<Node> {
         let left = self.mul()?;
 
+        let op_loc = self.tok().loc;
         let node = if self.consume("+") {
             let right = self.add()?;
             Node::with_binop(BinOpKind::Add, left, right)
@@ -300,8 +308,9 @@ impl Parser {
             let right = self.add()?;
             Node::with_binop(BinOpKind::Sub, left, right)
         } else {
-            left
-        };
+            Some(left)
+        }
+        .ok_or_else(|| binop_err(self.input, op_loc))?;
 
         Ok(node)
     }
@@ -312,6 +321,7 @@ impl Parser {
     fn relational(&mut self) -> Result<Node> {
         let left = self.add()?;
 
+        let op_loc = self.tok().loc;
         let node = if self.consume("<") {
             let right = self.relational()?;
             Node::with_binop(BinOpKind::Lt, left, right)
@@ -325,8 +335,9 @@ impl Parser {
             let right = self.relational()?;
             Node::with_binop(BinOpKind::Ge, left, right)
         } else {
-            left
-        };
+            Some(left)
+        }
+        .ok_or_else(|| binop_err(self.input, op_loc))?;
 
         Ok(node)
     }
@@ -337,6 +348,7 @@ impl Parser {
     fn equality(&mut self) -> Result<Node> {
         let left = self.relational()?;
 
+        let op_loc = self.tok().loc;
         let node = if self.consume("==") {
             let right = self.equality()?;
             Node::with_binop(BinOpKind::Eq, left, right)
@@ -344,8 +356,9 @@ impl Parser {
             let right = self.equality()?;
             Node::with_binop(BinOpKind::Ne, left, right)
         } else {
-            left
-        };
+            Some(left)
+        }
+        .ok_or_else(|| binop_err(self.input, op_loc))?;
 
         Ok(node)
     }
@@ -356,12 +369,14 @@ impl Parser {
     fn assign(&mut self) -> Result<Node> {
         let left = self.equality()?;
 
+        let op_loc = self.tok().loc;
         let node = if self.consume("=") {
             let right = self.assign()?;
             Node::with_binop(BinOpKind::Assign, left, right)
         } else {
-            left
-        };
+            Some(left)
+        }
+        .ok_or_else(|| binop_err(self.input, op_loc))?;
 
         Ok(node)
     }
@@ -389,7 +404,7 @@ impl Parser {
                 loc: self.tok().loc,
             });
         };
-        let var = Node::with_var(name, name_loc);
+        let var = Node::with_var(name, ty.clone(), name_loc);
 
         let init = if self.consume("=") {
             Some(self.expr()?)
@@ -570,10 +585,16 @@ pub enum UnOpKind {
 /// Represents a binary operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BinOpKind {
-    /// +
+    /// num + num
     Add,
-    /// -
+    /// ptr + num or num + ptr
+    PtrAdd,
+    /// num - num
     Sub,
+    /// ptr - num
+    PtrSub,
+    /// ptr - ptr
+    PtrDiff,
     /// *
     Mul,
     /// /
@@ -649,39 +670,87 @@ pub enum NodeKind {
     Program { funcs: Vec<Node> },
 }
 
-pub type Node = Annot<NodeKind>;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Node {
+    pub data: NodeKind,
+    pub ty: Type,
+    pub loc: Loc,
+}
 
 impl Node {
     pub fn with_num(num: usize, loc: Loc) -> Self {
         Self {
             data: NodeKind::Num(num),
+            ty: Type::new(TypeKind::Int),
             loc,
         }
     }
 
     pub fn with_unop(op: UnOpKind, operand: Node, op_loc: Loc) -> Self {
         let loc = op_loc + operand.loc;
+
+        let ty = match op {
+            UnOpKind::Addr => Type::with_ptr(operand.ty.clone()),
+            UnOpKind::Deref => match operand.ty.base() {
+                Some(base) => base,
+                None => Type::new(TypeKind::Int),
+            },
+            _ => Type::new(TypeKind::Int),
+        };
+
         Self {
             data: NodeKind::UnOp {
                 op,
                 operand: Box::new(operand),
             },
+            ty,
             loc: loc,
         }
     }
 
-    pub fn with_binop(op: BinOpKind, lhs: Node, rhs: Node) -> Self {
+    pub fn with_binop(op: BinOpKind, lhs: Node, rhs: Node) -> Option<Self> {
         // binop loc must be between lhs and rhs.
         let loc = lhs.loc + rhs.loc;
 
-        Self {
+        // Determins the operator and the type of the node.
+        // If OpKind is `Add` or `Sub` and `lhs` or `rhs` has base type,
+        // the type of node may be pointer-like.
+        let (op, ty) = match op {
+            BinOpKind::Add => {
+                if lhs.ty.is_integer() && rhs.ty.is_integer() {
+                    (op, Type::new(TypeKind::Int))
+                } else if lhs.ty.base().is_some() && rhs.ty.is_integer() {
+                    (BinOpKind::PtrAdd, lhs.ty.clone())
+                } else if lhs.ty.is_integer() && rhs.ty.base().is_some() {
+                    (BinOpKind::PtrAdd, rhs.ty.clone())
+                } else {
+                    return None;
+                }
+            }
+            BinOpKind::Sub => {
+                if lhs.ty.is_integer() && rhs.ty.is_integer() {
+                    (op, Type::new(TypeKind::Int))
+                } else if lhs.ty.base().is_some() && rhs.ty.is_integer() {
+                    (BinOpKind::PtrSub, lhs.ty.clone())
+                } else if lhs.ty.base().is_some() && rhs.ty.base().is_some() {
+                    (BinOpKind::PtrDiff, lhs.ty.clone())
+                } else {
+                    return None;
+                }
+            }
+            BinOpKind::Assign => (op, lhs.ty.clone()),
+            _ => (op, Type::new(TypeKind::Int)),
+        };
+
+        Some(Self {
             data: NodeKind::BinOp {
                 op,
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
             },
+            ty,
             loc,
-        }
+        })
     }
 
     pub fn with_var_decl(var: Node, ty: Type, init: Option<Node>, loc: Loc) -> Self {
@@ -691,13 +760,15 @@ impl Node {
                 ty,
                 init: init.map(|node| Box::new(node)),
             },
+            ty: Type::void(),
             loc,
         }
     }
 
-    pub fn with_var(name: &'static str, loc: Loc) -> Self {
+    pub fn with_var(name: &'static str, ty: Type, loc: Loc) -> Self {
         Self {
             data: NodeKind::Var(name),
+            ty,
             loc,
         }
     }
@@ -705,6 +776,7 @@ impl Node {
     pub fn with_block(stmts: Vec<Node>, loc: Loc) -> Self {
         Self {
             data: NodeKind::Block { stmts },
+            ty: Type::void(),
             loc,
         }
     }
@@ -715,6 +787,7 @@ impl Node {
                 cond: Box::new(cond),
                 stmt: Box::new(stmt),
             },
+            ty: Type::void(),
             loc,
         }
     }
@@ -733,6 +806,7 @@ impl Node {
                 inc: inc.map(|node| Box::new(node)),
                 stmt: Box::new(stmt),
             },
+            ty: Type::void(),
             loc,
         }
     }
@@ -758,13 +832,15 @@ impl Node {
                 elif_stmts,
                 else_stmt: else_stmt.map(|node| Box::new(node)),
             },
+            ty: Type::void(),
             loc,
         }
     }
 
-    pub fn with_fn_call(name: &'static str, args: Vec<Node>, loc: Loc) -> Self {
+    pub fn with_fn_call(name: &'static str, ty: Type, args: Vec<Node>, loc: Loc) -> Self {
         Self {
             data: NodeKind::FnCall { name, args },
+            ty,
             loc,
         }
     }
@@ -785,6 +861,7 @@ impl Node {
                 stmts,
                 locals,
             },
+            ty: Type::void(),
             loc,
         }
     }
@@ -804,8 +881,19 @@ impl Node {
 
         Self {
             data: NodeKind::Program { funcs },
+            ty: Type::void(),
             loc,
         }
+    }
+}
+
+/// [Node::with_binop()] can return `None` when the combination of `lhs` and `rhs` type is invald.
+/// This function converts `None` to [Error] with [Option::ok_or_else()].
+fn binop_err(input: &'static str, loc: Loc) -> Error {
+    Error::CompileError {
+        message: "invalid operand".into(),
+        input,
+        loc,
     }
 }
 

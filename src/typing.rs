@@ -1,3 +1,5 @@
+use crate::util::WORD_SIZE;
+
 /// Represents a type.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeKind {
@@ -7,6 +9,8 @@ pub enum TypeKind {
     Ptr { base: Box<Type> },
     /// Void
     Void,
+    /// Array.
+    Array { base: Box<Type>, len: usize },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -19,9 +23,10 @@ pub struct Type {
 impl Type {
     pub fn new(kind: TypeKind) -> Self {
         let size = match kind {
-            TypeKind::Int => 8,
-            TypeKind::Ptr { .. } => 8,
+            TypeKind::Int => WORD_SIZE,
+            TypeKind::Ptr { .. } => WORD_SIZE,
             TypeKind::Void => 0,
+            TypeKind::Array { .. } => WORD_SIZE,
         };
 
         Self { kind, size }
@@ -32,7 +37,19 @@ impl Type {
             kind: TypeKind::Ptr {
                 base: Box::new(base),
             },
-            size: 8,
+            size: WORD_SIZE,
+        }
+    }
+
+    pub fn with_array(base: Type, len: usize) -> Self {
+        let size = base.size * len;
+
+        Self {
+            kind: TypeKind::Array {
+                base: Box::new(base),
+                len,
+            },
+            size,
         }
     }
 
@@ -47,6 +64,7 @@ impl Type {
     pub fn base(&self) -> Option<Self> {
         match &self.kind {
             TypeKind::Ptr { base } => Some(*base.clone()),
+            TypeKind::Array { base, .. } => Some(*base.clone()),
             _ => None,
         }
     }

@@ -4,6 +4,7 @@ use std::{
     fs::File,
     hash::{DefaultHasher, Hash as _, Hasher as _},
     io,
+    mem::size_of,
     ops::{Add, AddAssign},
     path::{Path, PathBuf},
     process,
@@ -12,6 +13,9 @@ use std::{
 };
 
 use crate::PROG_NAME;
+
+/// Represents the size of a word in bytes.
+pub const WORD_SIZE: usize = size_of::<usize>();
 
 /// Represents a location [`start`, `end`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

@@ -1,12 +1,10 @@
 use crate::{
     parse::{BinOpKind, Node, NodeKind, UnOpKind, Var},
-    util::{Error, Result},
+    typing::TypeKind,
+    util::{Error, Result, WORD_SIZE},
 };
 
-use std::{collections::HashSet, fs::File, io::Write, mem::size_of, path::Path};
-
-/// Represents the size of a word in bytes.
-const WORD_SIZE: usize = size_of::<usize>();
+use std::{collections::HashSet, fs::File, io::Write, path::Path};
 
 /// Registers used to pass function variables.
 const ARG_REG: [&'static str; 6] = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
@@ -71,14 +69,16 @@ impl<W: Write> Generator<W> {
                     }
                     UnOpKind::Deref => {
                         self.codegen(*operand)?;
-                        self.load()?;
+                        if !matches!(node.ty.kind, TypeKind::Array { .. }) {
+                            self.load()?;
+                        }
                     }
                 }
             }
             NodeKind::BinOp { op, lhs, rhs } => {
                 match op {
                     BinOpKind::Assign => {
-                        self.gen_addr(*lhs)?;
+                        self.gen_lvar(*lhs)?;
                         self.codegen(*rhs)?;
                         self.store()?;
                         return Ok(());
@@ -93,18 +93,26 @@ impl<W: Write> Generator<W> {
                 match op {
                     BinOpKind::Add => writeln!(self.writer, "  add %rdi, %rax")?,
                     BinOpKind::PtrAdd => {
-                        writeln!(self.writer, "  imul ${}, %rdi", WORD_SIZE)?;
+                        writeln!(
+                            self.writer,
+                            "  imul ${}, %rdi",
+                            node.ty.base().unwrap().size
+                        )?;
                         writeln!(self.writer, "  add %rdi, %rax")?;
                     }
                     BinOpKind::Sub => writeln!(self.writer, "  sub %rdi, %rax")?,
                     BinOpKind::PtrSub => {
-                        writeln!(self.writer, "  imul ${}, %rdi", WORD_SIZE)?;
+                        writeln!(
+                            self.writer,
+                            "  imul ${}, %rdi",
+                            node.ty.base().unwrap().size
+                        )?;
                         writeln!(self.writer, "  sub %rdi, %rax")?;
                     }
                     BinOpKind::PtrDiff => {
                         writeln!(self.writer, "  sub %rdi, %rax")?;
                         writeln!(self.writer, "  cqo")?;
-                        writeln!(self.writer, "  mov ${}, %rdi", WORD_SIZE)?;
+                        writeln!(self.writer, "  mov ${}, %rdi", node.ty.base().unwrap().size)?;
                         writeln!(self.writer, "  idiv %rdi")?;
                     }
                     BinOpKind::Mul => writeln!(self.writer, "  imul %rdi, %rax")?,
@@ -161,8 +169,11 @@ impl<W: Write> Generator<W> {
                 writeln!(self.writer, "  add ${}, %rsp", WORD_SIZE)?;
             }
             NodeKind::Var(_) => {
+                let ty_kind = node.ty.kind.clone();
                 self.gen_addr(node)?;
-                self.load()?;
+                if !matches!(ty_kind, TypeKind::Array { .. }) {
+                    self.load()?;
+                }
             }
             NodeKind::Block { stmts } => {
                 for stmt in stmts {
@@ -301,7 +312,7 @@ impl<W: Write> Generator<W> {
                 params_names.resize(num_params, "");
 
                 for (i, mut local) in locals.into_iter().enumerate().rev() {
-                    offset += WORD_SIZE;
+                    offset += local.ty.size;
                     local.offset = offset;
                     if i < num_params {
                         params_names[i] = local.name;
@@ -339,17 +350,36 @@ impl<W: Write> Generator<W> {
         Ok(())
     }
 
+    fn gen_lvar(&mut self, node: Node) -> Result<()> {
+        match node.data {
+            NodeKind::Var(name) => {
+                // This unwrapping always succeed because existance of undeclared variable emit
+                // an error in parse phase.
+                let var = self.find_var(name).unwrap();
+                match var.ty.kind {
+                    TypeKind::Array { .. } => Err(Error::CompileError {
+                        message: "not an lvalue".into(),
+                        input: self.input,
+                        loc: node.loc,
+                    }),
+                    _ => self.gen_addr(node),
+                }
+            }
+            _ => self.gen_addr(node),
+        }
+    }
+
     /// Generates the address of the given `node`.
     fn gen_addr(&mut self, node: Node) -> Result<()> {
         match node.data {
             NodeKind::Var(name) => {
-                if let Some(var) = (&self.locals).into_iter().find(|v| v.name == name) {
-                    writeln!(self.writer, "  lea -{}(%rbp), %rdi", var.offset)?;
-                    writeln!(self.writer, "  push %rdi")?;
-                    Ok(())
-                } else {
-                    unreachable!("We don't need declaration of variables");
-                }
+                // This unwrapping always succeed because existance of undeclared variable emit
+                // an error in parse phase.
+                let var = self.find_var(name).unwrap();
+                let offset = var.offset;
+                writeln!(self.writer, "  lea -{}(%rbp), %rdi", offset)?;
+                writeln!(self.writer, "  push %rdi")?;
+                Ok(())
             }
             NodeKind::UnOp {
                 op: UnOpKind::Deref,
@@ -379,5 +409,9 @@ impl<W: Write> Generator<W> {
         writeln!(self.writer, "  mov %rax, (%rdi)")?;
         writeln!(self.writer, "  push %rax")?;
         Ok(())
+    }
+
+    fn find_var(&self, name: &str) -> Option<&Var> {
+        self.locals.iter().find(|var| var.name == name)
     }
 }

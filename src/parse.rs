@@ -214,7 +214,7 @@ impl Parser {
     }
 
     /// ```text
-    /// primary = "(" expr ")" | ident ( "(" func-args ")" )? | num
+    /// primary = "(" expr ")" | "sizeof" unary | ident ( "(" func-args ")" )? | num
     /// ```
     fn primary(&mut self) -> Result<Node> {
         let loc = self.tok().loc;
@@ -229,6 +229,10 @@ impl Parser {
             node.loc = loc;
 
             node
+        } else if self.consume("sizeof") {
+            let loc = loc + self.tok().loc;
+            let node = self.unary()?;
+            Node::with_num(node.ty.size, loc)
         } else if let Some(name) = self.consume_ident() {
             if self.consume("(") {
                 let args = self.func_args()?;

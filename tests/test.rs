@@ -485,3 +485,56 @@ fn test71() {
         "int main() { int x[3]; *x=3; *(x+1)=4; *(x+2)=5; return *(x+2); }"
     );
 }
+
+#[test]
+fn test72() {
+    test!(0, "int main() { int x[2][3]; int *y=x; *y=0; return **x; }");
+}
+
+#[test]
+fn test73() {
+    test!(
+        1,
+        "int main() { int x[2][3]; int *y=x; *(y+1)=1; return *(*x+1); }"
+    );
+}
+
+#[test]
+fn test74() {
+    test!(
+        2,
+        "int main() { int x[2][3]; int *y=x; *(y+2)=2; return *(*x+2); }"
+    );
+}
+
+#[test]
+fn test75() {
+    test!(
+        3,
+        "int main() { int x[2][3]; int *y=x; *(y+3)=3; return **(x+1); }"
+    );
+}
+
+#[test]
+fn test76() {
+    test!(
+        4,
+        "int main() { int x[2][3]; int *y=x; *(y+4)=4; return *(*(x+1)+1); }"
+    );
+}
+
+#[test]
+fn test77() {
+    test!(
+        5,
+        "int main() { int x[2][3]; int *y=x; *(y+5)=5; return *(*(x+1)+2); }"
+    );
+}
+
+#[test]
+fn test78() {
+    test!(
+        6,
+        "int main() { int x[2][3]; int *y=x; *(y+6)=6; return **(x+2); }"
+    );
+}

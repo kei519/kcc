@@ -151,6 +151,7 @@ impl Parser {
 
         let sz = self.expect_num()?;
         self.expect("]")?;
+        let base = self.read_type_suffix(base)?;
         Ok(Type::with_array(base, sz))
     }
 

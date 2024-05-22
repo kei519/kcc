@@ -71,9 +71,7 @@ impl<W: Write> Generator<W> {
                     }
                     UnOpKind::Deref => {
                         self.codegen(*operand)?;
-                        writeln!(self.writer, "  pop %rdi")?;
-                        writeln!(self.writer, "  mov (%rdi), %rax")?;
-                        writeln!(self.writer, "  push %rax")?;
+                        self.load()?;
                     }
                 }
             }
@@ -82,10 +80,7 @@ impl<W: Write> Generator<W> {
                     BinOpKind::Assign => {
                         self.gen_addr(*lhs)?;
                         self.codegen(*rhs)?;
-                        writeln!(self.writer, "  pop %rax")?;
-                        writeln!(self.writer, "  pop %rdi")?;
-                        writeln!(self.writer, "  mov %rax, (%rdi)")?;
-                        writeln!(self.writer, "  push %rax")?;
+                        self.store()?;
                         return Ok(());
                     }
                     _ => {}
@@ -148,14 +143,12 @@ impl<W: Write> Generator<W> {
 
                 self.gen_addr(*var)?;
                 self.codegen(*init)?;
-                writeln!(self.writer, "  pop %rax")?;
-                writeln!(self.writer, "  pop %rdi")?;
-                writeln!(self.writer, "  mov %rax, (%rdi)")?;
+                self.store()?;
+                writeln!(self.writer, "  add ${}, %rsp", WORD_SIZE)?;
             }
             NodeKind::Var(_) => {
                 self.gen_addr(node)?;
-                writeln!(self.writer, "  pop %rdi")?;
-                writeln!(self.writer, "  push (%rdi)")?;
+                self.load()?;
             }
             NodeKind::Block { stmts } => {
                 for stmt in stmts {
@@ -357,5 +350,20 @@ impl<W: Write> Generator<W> {
                 loc: node.loc,
             }),
         }
+    }
+
+    fn load(&mut self) -> Result<()> {
+        writeln!(self.writer, "  pop %rax")?;
+        writeln!(self.writer, "  mov (%rax), %rax")?;
+        writeln!(self.writer, "  push %rax")?;
+        Ok(())
+    }
+
+    fn store(&mut self) -> Result<()> {
+        writeln!(self.writer, "  pop %rax")?;
+        writeln!(self.writer, "  pop %rdi")?;
+        writeln!(self.writer, "  mov %rax, (%rdi)")?;
+        writeln!(self.writer, "  push %rax")?;
+        Ok(())
     }
 }

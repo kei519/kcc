@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use std::{collections::HashSet, mem};
+use std::mem;
 
 use crate::{
     tokenize::{Token, TokenKind},
@@ -12,7 +12,7 @@ use crate::{
 pub struct Parser {
     input: &'static str,
     tokens: Vec<Token>,
-    locals: HashSet<Var>,
+    locals: Vec<Var>,
     pos: usize,
 }
 
@@ -21,7 +21,7 @@ impl Parser {
         Self {
             input,
             tokens,
-            locals: HashSet::new(),
+            locals: vec![],
             pos: 0,
         }
     }
@@ -39,6 +39,19 @@ impl Parser {
             true
         } else {
             false
+        }
+    }
+
+    /// Pushes a given `var` into `self.locals`
+    /// if it does not aloready have the same name variable.
+    ///
+    /// Returns `true` if succeeds pushing.
+    fn push_var(&mut self, var: Var) -> bool {
+        if self.locals.iter().any(|item| item.name == var.name) {
+            false
+        } else {
+            self.locals.push(var);
+            true
         }
     }
 
@@ -150,27 +163,41 @@ impl Parser {
     /// ```text
     /// param = basetype ident
     /// ```
-    fn param(&mut self) -> Result<Var> {
+    fn param(&mut self) -> Result<()> {
         let ty = self.basetype()?;
+
+        let name_loc = self.tok().loc;
         let name = self.expect_ident()?;
+
         // Pushes in locals because parameters are the same as locals.
-        self.locals.insert(Var::new(name, ty.clone()));
-        Ok(Var::new(name, ty))
+        if self.push_var(Var::new(name, ty)) {
+            Ok(())
+        } else {
+            Err(Error::CompileError {
+                message: "same name variable is already declared".into(),
+                input: self.input,
+                loc: name_loc,
+            })
+        }
     }
 
+    /// Returns the number of parameters.
     /// ```text
     /// params = param ( "," param )*
     /// ```
-    fn params(&mut self) -> Result<Vec<Var>> {
-        let Ok(param) = self.param() else {
-            return Ok(vec![]);
+    fn params(&mut self) -> Result<usize> {
+        let mut num = 0;
+
+        if self.param().is_err() {
+            return Ok(num);
         };
-        let mut params = vec![param];
+        num += 1;
 
         while self.consume(",") {
-            params.push(self.param()?);
+            self.param()?;
+            num += 1;
         }
-        Ok(params)
+        Ok(num)
     }
 
     /// ```text
@@ -217,7 +244,7 @@ impl Parser {
     }
 
     /// ```text
-    /// unary = ( ("+" | "-") unary ) | primary
+    /// unary = ( ("+" | "-" | "&" | "*" ) unary ) | primary
     /// ```
     fn unary(&mut self) -> Result<Node> {
         let loc = self.tok().loc;
@@ -228,6 +255,12 @@ impl Parser {
         } else if self.consume("-") {
             let operand = self.unary()?;
             Node::with_unop(UnOpKind::Neg, operand, loc)
+        } else if self.consume("&") {
+            let operand = self.unary()?;
+            Node::with_unop(UnOpKind::Addr, operand, loc)
+        } else if self.consume("*") {
+            let operand = self.unary()?;
+            Node::with_unop(UnOpKind::Deref, operand, loc)
         } else {
             self.primary()?
         };
@@ -368,7 +401,7 @@ impl Parser {
         self.expect(";")?;
 
         // Declaration of the same name variable multiple times is not allowed.
-        if !self.locals.insert(Var::new(name, ty.clone())) {
+        if !self.push_var(Var::new(name, ty.clone())) {
             return Err(Error::CompileError {
                 message: "this variable is already declared".into(),
                 input: self.input,
@@ -498,7 +531,7 @@ impl Parser {
         let name = self.expect_ident()?;
 
         self.expect("(")?;
-        let params = self.params()?;
+        let num_params = self.params()?;
         self.expect(")")?;
 
         self.expect("{")?;
@@ -512,13 +545,8 @@ impl Parser {
             stmts.push(self.stmt()?);
         };
 
-        for param in &params {
-            self.locals.remove(param);
-        }
-        let locals = mem::replace(&mut self.locals, HashSet::new())
-            .into_iter()
-            .collect();
-        Ok(Node::with_fn(name, ty, params, stmts, locals, loc))
+        let locals = mem::replace(&mut self.locals, vec![]);
+        Ok(Node::with_fn(name, ty, num_params, stmts, locals, loc))
     }
 }
 
@@ -533,6 +561,10 @@ pub enum UnOpKind {
     Return,
     /// Expression statement.
     Expr,
+    /// &
+    Addr,
+    /// *
+    Deref,
 }
 
 /// Represents a binary operator.
@@ -609,7 +641,7 @@ pub enum NodeKind {
     Fn {
         name: &'static str,
         return_ty: Type,
-        params: Vec<Var>,
+        num_params: usize,
         stmts: Vec<Node>,
         locals: Vec<Var>,
     },
@@ -740,7 +772,7 @@ impl Node {
     pub fn with_fn(
         name: &'static str,
         return_ty: Type,
-        params: Vec<Var>,
+        num_params: usize,
         stmts: Vec<Node>,
         locals: Vec<Var>,
         loc: Loc,
@@ -749,7 +781,7 @@ impl Node {
             data: NodeKind::Fn {
                 name,
                 return_ty,
-                params,
+                num_params,
                 stmts,
                 locals,
             },

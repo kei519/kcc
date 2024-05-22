@@ -413,3 +413,41 @@ fn test59() {
             int fib(int x) { if (x <= 1) return 1; return fib(x-1) + fib(x-2); }"
     );
 }
+
+#[test]
+fn test60() {
+    test!(3, "int main() { int x = 3; return *&x; }");
+}
+
+#[test]
+fn test61() {
+    test!(
+        3,
+        "int main() { int x = 3; int *y = &x; int **z = &y; return **z; }"
+    );
+}
+
+#[test]
+fn test62() {
+    test!(5, "int main() { int x = 3; int y = 5; return *(&x+8); }");
+}
+
+#[test]
+fn test63() {
+    test!(3, "int main() { int x = 3; int y = 5; return *(&y-8); }");
+}
+
+#[test]
+fn test64() {
+    test!(5, "int main() { int x=3; int *y=&x; *y=5; return x; }");
+}
+
+#[test]
+fn test65() {
+    test!(7, "int main() { int x=3; int y=5; *(&x+8)=7; return y; }");
+}
+
+#[test]
+fn test66() {
+    test!(7, "int main() { int x=3; int y=5; *(&y-8)=7; return x; }");
+}

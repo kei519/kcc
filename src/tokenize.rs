@@ -3,9 +3,9 @@ mod tests;
 
 use crate::util::{Annot, Error, Loc, Result};
 
-const KW: [&'static str; 21] = [
+const KW: [&'static str; 22] = [
     "==", "!=", "<=", ">=", "+", "-", "*", "/", "(", ")", "<", ">", ";", ",", ".", ":", "[", "]",
-    "{", "}", "=",
+    "{", "}", "=", "&",
 ];
 
 const SEP_KW: [&'static str; 6] = ["return", "int", "while", "for", "if", "else"];

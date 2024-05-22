@@ -44,15 +44,16 @@ impl<W: Write> Generator<W> {
                 writeln!(self.writer, "  push %rax")?;
             }
             NodeKind::UnOp { op, operand } => {
-                self.codegen(*operand)?;
                 match op {
-                    UnOpKind::Pos => {}
+                    UnOpKind::Pos => self.codegen(*operand)?,
                     UnOpKind::Neg => {
+                        self.codegen(*operand)?;
                         writeln!(self.writer, "  pop %rax")?;
                         writeln!(self.writer, "  neg %rax")?;
                         writeln!(self.writer, "  push %rax")?;
                     }
                     UnOpKind::Return => {
+                        self.codegen(*operand)?;
                         writeln!(self.writer, "  pop %rax")?;
 
                         // Writes the epilogue.
@@ -62,7 +63,17 @@ impl<W: Write> Generator<W> {
                         writeln!(self.writer, "  ret")?;
                     }
                     UnOpKind::Expr => {
+                        self.codegen(*operand)?;
                         writeln!(self.writer, "  add ${}, %rsp", WORD_SIZE)?;
+                    }
+                    UnOpKind::Addr => {
+                        self.gen_addr(*operand)?;
+                    }
+                    UnOpKind::Deref => {
+                        self.codegen(*operand)?;
+                        writeln!(self.writer, "  pop %rdi")?;
+                        writeln!(self.writer, "  mov (%rdi), %rax")?;
+                        writeln!(self.writer, "  push %rax")?;
                     }
                 }
             }
@@ -262,7 +273,7 @@ impl<W: Write> Generator<W> {
             }
             NodeKind::Fn {
                 name,
-                params,
+                num_params,
                 stmts,
                 locals,
                 ..
@@ -279,23 +290,33 @@ impl<W: Write> Generator<W> {
                 // Determins the offset of each local variables.
                 let mut offset = 0;
 
-                // Copy the arguments to the stack.
-                for (i, mut param) in params.into_iter().enumerate() {
-                    offset += WORD_SIZE;
-                    param.offset = offset;
-                    self.locals.insert(param);
-                    writeln!(self.writer, "  mov %{}, -{}(%rbp)", ARG_REG[i], offset)?;
-                }
+                let mut params_names = Vec::with_capacity(num_params);
+                params_names.resize(num_params, "");
 
-                for mut local in locals {
+                for (i, mut local) in locals.into_iter().enumerate().rev() {
                     offset += WORD_SIZE;
                     local.offset = offset;
+                    if i < num_params {
+                        params_names[i] = local.name;
+                    }
                     self.locals.insert(local);
                 }
 
                 // Allocates memory for global variables.
                 if offset != 0 {
                     writeln!(self.writer, "  sub ${}, %rsp", offset)?;
+                }
+
+                // Copy the arguments into the stack.
+                for (i, param_name) in params_names.into_iter().enumerate() {
+                    let offset = self
+                        .locals
+                        .iter()
+                        .find(|var| var.name == param_name)
+                        .map(|var| var.offset)
+                        .unwrap();
+
+                    writeln!(self.writer, "  mov %{}, -{}(%rbp)", ARG_REG[i], offset)?;
                 }
 
                 for stmt in stmts {
@@ -322,6 +343,13 @@ impl<W: Write> Generator<W> {
                 } else {
                     unreachable!("We don't need declaration of variables");
                 }
+            }
+            NodeKind::UnOp {
+                op: UnOpKind::Deref,
+                operand,
+            } => {
+                self.codegen(*operand)?;
+                Ok(())
             }
             _ => Err(Error::CompileError {
                 message: "not an lvalue".into(),

@@ -262,7 +262,8 @@ impl Parser {
     }
 
     /// ```text
-    /// unary = ( ("+" | "-" | "&" | "*" ) unary ) | primary
+    /// unary = ( ("+" | "-" | "&" | "*" )? unary )
+    ///       | postfix
     /// ```
     fn unary(&mut self) -> Result<Node> {
         let loc = self.tok().loc;
@@ -280,8 +281,30 @@ impl Parser {
             let operand = self.unary()?;
             Node::with_unop(UnOpKind::Deref, operand, loc)
         } else {
-            self.primary()?
+            self.postfix()?
         };
+
+        Ok(node)
+    }
+
+    /// ```text
+    /// postfix = primary ( "[" expr "]" )*
+    /// ```
+    fn postfix(&mut self) -> Result<Node> {
+        let loc = self.tok().loc;
+        let mut node = self.primary()?;
+
+        while self.consume("[") {
+            let exp_loc = self.tok().loc;
+
+            // x[y] is short for *(x+y)
+            let exp = Node::with_binop(BinOpKind::Add, node, self.expr()?)
+                .ok_or_else(|| binop_err(self.input, exp_loc))?;
+
+            let loc = loc + self.tok().loc;
+            self.expect("]")?;
+            node = Node::with_unop(UnOpKind::Deref, exp, loc);
+        }
 
         Ok(node)
     }

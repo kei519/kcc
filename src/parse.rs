@@ -144,6 +144,16 @@ impl Parser {
         Ok(ty)
     }
 
+    fn read_type_suffix(&mut self, base: Type) -> Result<Type> {
+        if !self.consume("[") {
+            return Ok(base);
+        }
+
+        let sz = self.expect_num()?;
+        self.expect("]")?;
+        Ok(Type::with_array(base, sz))
+    }
+
     /// ```text
     /// func-args = ( assign ( "," assign )* )?
     /// ```
@@ -168,6 +178,7 @@ impl Parser {
 
         let name_loc = self.tok().loc;
         let name = self.expect_ident()?;
+        let ty = self.read_type_suffix(ty)?;
 
         // Pushes in locals because parameters are the same as locals.
         if self.push_var(Var::new(name, ty)) {
@@ -182,6 +193,7 @@ impl Parser {
     }
 
     /// Returns the number of parameters.
+    ///
     /// ```text
     /// params = param ( "," param )*
     /// ```
@@ -389,7 +401,7 @@ impl Parser {
     }
 
     /// ```text
-    /// declaration = basetype ident ( "=" expr )? ";"
+    /// declaration = basetype ident ( "[" num "]" )* ( "=" expr )? ";"
     /// ```
     fn decl(&mut self) -> Result<Node> {
         let loc = self.tok().loc;
@@ -404,6 +416,7 @@ impl Parser {
                 loc: self.tok().loc,
             });
         };
+        let ty = self.read_type_suffix(ty)?;
         let var = Node::with_var(name, ty.clone(), name_loc);
 
         let init = if self.consume("=") {

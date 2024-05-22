@@ -456,3 +456,32 @@ fn test66() {
 fn test67() {
     test!(2, "int main() { int x=3; return (&x+2)-&x; }");
 }
+
+#[test]
+fn test68() {
+    test!(3, "int main() { int x[2]; int *y=&x; *y=3; return *x; }");
+}
+
+#[test]
+fn test69() {
+    test!(
+        3,
+        "int main() { int x[3]; *x=3; *(x+1)=4; *(x+2)=5; return *x; }"
+    );
+}
+
+#[test]
+fn test70() {
+    test!(
+        4,
+        "int main() { int x[3]; *x=3; *(x+1)=4; *(x+2)=5; return *(x+1); }"
+    );
+}
+
+#[test]
+fn test71() {
+    test!(
+        5,
+        "int main() { int x[3]; *x=3; *(x+1)=4; *(x+2)=5; return *(x+2); }"
+    );
+}

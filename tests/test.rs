@@ -429,12 +429,12 @@ fn test61() {
 
 #[test]
 fn test62() {
-    test!(5, "int main() { int x = 3; int y = 5; return *(&x+8); }");
+    test!(5, "int main() { int x = 3; int y = 5; return *(&x+1); }");
 }
 
 #[test]
 fn test63() {
-    test!(3, "int main() { int x = 3; int y = 5; return *(&y-8); }");
+    test!(3, "int main() { int x = 3; int y = 5; return *(&y-1); }");
 }
 
 #[test]
@@ -444,10 +444,15 @@ fn test64() {
 
 #[test]
 fn test65() {
-    test!(7, "int main() { int x=3; int y=5; *(&x+8)=7; return y; }");
+    test!(7, "int main() { int x=3; int y=5; *(&x+1)=7; return y; }");
 }
 
 #[test]
 fn test66() {
-    test!(7, "int main() { int x=3; int y=5; *(&y-8)=7; return x; }");
+    test!(7, "int main() { int x=3; int y=5; *(&y-1)=7; return x; }");
+}
+
+#[test]
+fn test67() {
+    test!(2, "int main() { int x=3; return (&x+2)-&x; }");
 }

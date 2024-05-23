@@ -35,6 +35,11 @@ impl Parser {
         &self.tokens[self.pos]
     }
 
+    /// Returns the current token location.
+    fn loc(&self) -> Loc {
+        self.tok().loc
+    }
+
     /// Advances the cursor if the cursor will not exceed the eof.
     /// Returns `true` if the cursor is advanced.
     fn next(&mut self) -> bool {
@@ -140,7 +145,7 @@ impl Parser {
     /// Ensures that the current token is a given string.
     fn expect(&mut self, s: &str) -> Result<()> {
         if !self.consume(s) {
-            return self.comp_err(format!("expected '{}'", s), self.tok().loc);
+            return self.comp_err(format!("expected '{}'", s), self.loc());
         }
         Ok(())
     }
@@ -150,7 +155,7 @@ impl Parser {
             self.next();
             Ok(num)
         } else {
-            self.comp_err("number is required", self.tok().loc)
+            self.comp_err("number is required", self.loc())
         }
     }
 
@@ -166,7 +171,7 @@ impl Parser {
     fn expect_ident(&mut self) -> Result<&'static str> {
         match self.consume_ident() {
             Some(name) => Ok(name),
-            None => self.comp_err("identifier is required", self.tok().loc),
+            None => self.comp_err("identifier is required", self.loc()),
         }
     }
 
@@ -226,7 +231,7 @@ impl Parser {
     fn param(&mut self) -> Result<()> {
         let ty = self.basetype()?;
 
-        let name_loc = self.tok().loc;
+        let name_loc = self.loc();
         let name = self.expect_ident()?;
         let ty = self.read_type_suffix(ty)?;
 
@@ -267,7 +272,7 @@ impl Parser {
     ///         | num
     /// ```
     fn primary(&mut self) -> Result<Node> {
-        let loc = self.tok().loc;
+        let loc = self.loc();
 
         let node = if self.consume("(") {
             if self.consume("{") {
@@ -277,14 +282,14 @@ impl Parser {
 
                 // The location of the node surrounded by parentheses is
                 // the merge of the both surrounding parentheses locations.
-                let loc = loc + self.tok().loc;
+                let loc = loc + self.loc();
                 self.expect(")")?;
                 node.loc = loc;
 
                 node
             }
         } else if self.consume("sizeof") {
-            let loc = loc + self.tok().loc;
+            let loc = loc + self.loc();
             let node = self.unary()?;
             Node::with_num(node.ty.size, loc)
         } else if let Some(name) = self.consume_ident() {
@@ -293,7 +298,7 @@ impl Parser {
 
                 // The location of the function call is between function name
                 // and close parentesis.
-                let loc = loc + self.tok().loc;
+                let loc = loc + self.loc();
                 self.expect(")")?;
 
                 return Ok(Node::with_fn_call(name, Type::int_type(), args, loc));
@@ -323,7 +328,7 @@ impl Parser {
     ///       | postfix
     /// ```
     fn unary(&mut self) -> Result<Node> {
-        let loc = self.tok().loc;
+        let loc = self.loc();
 
         let node = if self.consume("+") {
             let operand = self.unary()?;
@@ -348,17 +353,17 @@ impl Parser {
     /// postfix = primary ( "[" expr "]" )*
     /// ```
     fn postfix(&mut self) -> Result<Node> {
-        let loc = self.tok().loc;
+        let loc = self.loc();
         let mut node = self.primary()?;
 
         while self.consume("[") {
-            let exp_loc = self.tok().loc;
+            let exp_loc = self.loc();
 
             // x[y] is short for *(x+y)
             let exp = Node::with_binop(BinOpKind::Add, node, self.expr()?)
                 .ok_or_else(|| self.binop_err(exp_loc))?;
 
-            let loc = loc + self.tok().loc;
+            let loc = loc + self.loc();
             self.expect("]")?;
             node = Node::with_unop(UnOpKind::Deref, exp, loc);
         }
@@ -372,7 +377,7 @@ impl Parser {
     fn mul(&mut self) -> Result<Node> {
         let mut left = self.unary()?;
 
-        let op_loc = self.tok().loc;
+        let op_loc = self.loc();
         let node = loop {
             left = if self.consume("*") {
                 let right = self.unary()?;
@@ -395,7 +400,7 @@ impl Parser {
     fn add(&mut self) -> Result<Node> {
         let mut left = self.mul()?;
 
-        let op_loc = self.tok().loc;
+        let op_loc = self.loc();
         let node = loop {
             left = if self.consume("+") {
                 let right = self.mul()?;
@@ -418,7 +423,7 @@ impl Parser {
     fn relational(&mut self) -> Result<Node> {
         let mut left = self.add()?;
 
-        let op_loc = self.tok().loc;
+        let op_loc = self.loc();
         let node = loop {
             left = if self.consume("<") {
                 let right = self.add()?;
@@ -447,7 +452,7 @@ impl Parser {
     fn equality(&mut self) -> Result<Node> {
         let mut left = self.relational()?;
 
-        let op_loc = self.tok().loc;
+        let op_loc = self.loc();
         let node = loop {
             left = if self.consume("==") {
                 let right = self.relational()?;
@@ -470,7 +475,7 @@ impl Parser {
     fn assign(&mut self) -> Result<Node> {
         let left = self.equality()?;
 
-        let op_loc = self.tok().loc;
+        let op_loc = self.loc();
         let node = if self.consume("=") {
             let right = self.assign()?;
             Node::with_binop(BinOpKind::Assign, left, right)
@@ -493,13 +498,13 @@ impl Parser {
     /// declaration = basetype ident ( "[" num "]" )* ( "=" expr )? ";"
     /// ```
     fn decl(&mut self) -> Result<Node> {
-        let loc = self.tok().loc;
+        let loc = self.loc();
 
         let ty = self.basetype()?;
 
-        let name_loc = self.tok().loc;
+        let name_loc = self.loc();
         let Some(name) = self.consume_ident() else {
-            return self.comp_err("variable name is required", self.tok().loc);
+            return self.comp_err("variable name is required", self.loc());
         };
         let ty = self.read_type_suffix(ty)?;
         let var = Node::with_var(name, ty.clone(), name_loc);
@@ -510,7 +515,7 @@ impl Parser {
             None
         };
 
-        let loc = loc + self.tok().loc;
+        let loc = loc + self.loc();
         self.expect(";")?;
 
         // Declaration of the same name variable multiple times is not allowed.
@@ -526,7 +531,7 @@ impl Parser {
     /// stmt-expr = stmt+
     /// ```
     fn stmt_expr(&mut self) -> Result<Node> {
-        let loc = self.tok().loc;
+        let loc = self.loc();
         let stmt = match self.stmt() {
             Ok(stmt) => stmt,
             Err(_) => {
@@ -543,7 +548,7 @@ impl Parser {
         if last_stmt.ty.kind == TypeKind::Void {
             self.comp_err("stmt expr returning void is not supported", last_stmt.loc)
         } else {
-            let loc = loc + self.tok().loc;
+            let loc = loc + self.loc();
             self.expect(")")?;
             Ok(Node::with_stmt_expr(stmts, loc))
         }
@@ -562,20 +567,20 @@ impl Parser {
             return self.decl();
         }
 
-        let loc = self.tok().loc;
+        let loc = self.loc();
 
         // Recognizes a block.
         if self.consume("{") {
             let mut stmts = vec![];
             let brace_loc = loc;
-            let mut loc = loc + self.tok().loc;
+            let mut loc = loc + self.loc();
 
             while !self.consume("}") {
                 if self.tok().data == TokenKind::Eof {
                     return self.comp_err("this brace is not closed", brace_loc);
                 }
                 stmts.push(self.stmt()?);
-                loc += self.tok().loc;
+                loc += self.loc();
             }
             return Ok(Node::with_block(stmts, loc));
         } else if self.consume("while") {
@@ -658,7 +663,7 @@ impl Parser {
     /// function = basetype ident "(" params? ")" "{" stmt* "}"
     /// ```
     fn function(&mut self) -> Result<Node> {
-        let loc = self.tok().loc;
+        let loc = self.loc();
 
         let ty = self.basetype()?;
         let name = self.expect_ident()?;
@@ -671,7 +676,7 @@ impl Parser {
         let mut stmts = vec![];
 
         let loc = loop {
-            let loc = loc + self.tok().loc;
+            let loc = loc + self.loc();
             if self.consume("}") {
                 break loc;
             }
@@ -688,7 +693,7 @@ impl Parser {
     fn global_var(&mut self) -> Result<()> {
         let ty = self.basetype()?;
 
-        let loc = self.tok().loc;
+        let loc = self.loc();
         let Some(name) = self.consume_ident() else {
             return self.comp_err("identifier is required", loc);
         };
@@ -713,11 +718,7 @@ impl Parser {
     /// [Node::with_binop()] can return `None` when the combination of `lhs` and `rhs` type is invald.
     /// This function converts `None` to [Error] with [Option::ok_or_else()].
     fn binop_err(&self, loc: Loc) -> Error {
-        Error::CompileError {
-            message: "invalid operand".into(),
-            input: self.input,
-            loc,
-        }
+        self.comp_err::<()>("invalid operand", loc).err().unwrap()
     }
 }
 

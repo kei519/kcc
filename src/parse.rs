@@ -53,6 +53,16 @@ impl Parser {
         }
     }
 
+    /// Returns the current last position of scope.
+    fn enter_scope(&self) -> usize {
+        self.scope.len()
+    }
+
+    /// Reverts the scope previous one with return value of [enter_scope()].
+    fn exit_scope(&mut self, prev: usize) {
+        self.scope.truncate(prev);
+    }
+
     fn new_var(&mut self, name: &'static str, ty: Type, is_local: bool) -> Rc<RefCell<Var>> {
         let var = Rc::new(RefCell::new(Var::new(name, ty, is_local)));
 
@@ -527,6 +537,8 @@ impl Parser {
     /// stmt-expr = stmt+
     /// ```
     fn stmt_expr(&mut self) -> Result<Node> {
+        let prev_scope = self.enter_scope();
+
         let loc = self.loc();
         let stmt = match self.stmt() {
             Ok(stmt) => stmt,
@@ -546,6 +558,8 @@ impl Parser {
         } else {
             let loc = loc + self.loc();
             self.expect(")")?;
+
+            self.exit_scope(prev_scope);
             Ok(Node::with_stmt_expr(stmts, loc))
         }
     }
@@ -571,6 +585,7 @@ impl Parser {
             let brace_loc = loc;
             let mut loc = loc + self.loc();
 
+            let prev_scope = self.enter_scope();
             while !self.consume("}") {
                 if self.tok().data == TokenKind::Eof {
                     return self.comp_err("this brace is not closed", brace_loc);
@@ -578,6 +593,7 @@ impl Parser {
                 stmts.push(self.stmt()?);
                 loc += self.loc();
             }
+            self.exit_scope(prev_scope);
             return Ok(Node::with_block(stmts, loc));
         } else if self.consume("while") {
             self.expect("(")?;
@@ -659,13 +675,16 @@ impl Parser {
     /// function = basetype ident "(" params? ")" "{" stmt* "}"
     /// ```
     fn function(&mut self) -> Result<Node> {
+        assert!(self.locals.is_empty());
+
         let loc = self.loc();
 
         let ty = self.basetype()?;
         let name = self.expect_ident()?;
 
         self.expect("(")?;
-        let num_params = self.params()?;
+        let prev_scope = self.enter_scope();
+        let params = self.params()?;
         self.expect(")")?;
 
         self.expect("{")?;
@@ -679,8 +698,10 @@ impl Parser {
             stmts.push(self.stmt()?);
         };
 
+        self.exit_scope(prev_scope);
         let locals = mem::replace(&mut self.locals, vec![]);
-        Ok(Node::with_fn(name, ty, num_params, stmts, locals, loc))
+
+        Ok(Node::with_fn(name, ty, params, stmts, locals, loc))
     }
 
     /// ```text

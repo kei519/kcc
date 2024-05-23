@@ -852,6 +852,27 @@ fn test131() {
 
 #[test]
 fn test132() {
-    test!(2, "int main() { // return 1;
-        return 2; }");
+    test!(
+        2,
+        "int main() { // return 1;
+        return 2; }"
+    );
+}
+
+#[test]
+fn test133() {
+    test!(2, "int main() { int x=2; { int x=3; } return x; }");
+}
+
+#[test]
+fn test134() {
+    test!(
+        2,
+        "int main() { int x=2; { int x=3; } { int y=4; return x; }}"
+    );
+}
+
+#[test]
+fn test135() {
+    test!(3, "int main() { int x=2; { x=3; } return x; }");
 }

@@ -779,3 +779,48 @@ fn test116() {
 fn test117() {
     test!(4, r#"int main() { return sizeof("abc"); }"#);
 }
+
+#[test]
+fn test118() {
+    test!(7, r#"int main() { return "\a"[0]; }"#);
+}
+
+#[test]
+fn test119() {
+    test!(8, r#"int main() { return "\b"[0]; }"#);
+}
+
+#[test]
+fn test120() {
+    test!(9, r#"int main() { return "\t"[0]; }"#);
+}
+
+#[test]
+fn test121() {
+    test!(10, r#"int main() { return "\n"[0]; }"#);
+}
+
+#[test]
+fn test122() {
+    test!(11, r#"int main() { return "\v"[0]; }"#);
+}
+
+#[test]
+fn test123() {
+    test!(12, r#"int main() { return "\f"[0]; }"#);
+}
+
+#[test]
+fn test124() {
+    test!(13, r#"int main() { return "\r"[0]; }"#);
+}
+
+#[test]
+fn test125() {
+    test!(27, r#"int main() { return "\e"[0]; }"#);
+}
+
+#[test]
+fn test126() {
+    test!(0, r#"int main() { return "\0"[0]; }"#);
+}

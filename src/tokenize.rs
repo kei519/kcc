@@ -35,23 +35,7 @@ impl Tokenizer {
             }
 
             if self.head() == b'"' {
-                let start = self.pos;
-
-                while self.next() && self.head() != b'"' {}
-                if self.cur().is_empty() {
-                    return Err(Error::CompileError {
-                        message: "unclosed string literal".into(),
-                        input: self.input,
-                        loc: Loc::at(self.pos),
-                    });
-                }
-
-                self.next();
-                let end = self.pos;
-                ret.push(Token::with_str(
-                    &self.input[start + 1..end - 1],
-                    Loc::range(start, end),
-                ));
+                ret.push(self.read_string_literal()?);
                 continue;
             }
 
@@ -160,6 +144,57 @@ impl Tokenizer {
         }
         num
     }
+
+    fn read_string_literal(&mut self) -> Result<Token> {
+        let start = self.pos;
+        let mut buf = String::new();
+
+        let mut is_escaping = false;
+        loop {
+            if !self.next() {
+                return Err(Error::CompileError {
+                    message: "unclosed string literal".into(),
+                    input: self.input,
+                    loc: Loc::at(self.pos),
+                });
+            }
+
+            if is_escaping {
+                buf.push(get_escape_char(self.head()) as char);
+                is_escaping = false;
+                continue;
+            }
+
+            if self.head() == b'"' {
+                break;
+            }
+
+            if self.head() == b'\\' {
+                is_escaping = true;
+            } else {
+                buf.push(self.head() as char);
+            }
+        }
+
+        self.next();
+        let end = self.pos;
+        Ok(Token::with_str(buf, Loc::range(start, end)))
+    }
+}
+
+fn get_escape_char(c: u8) -> u8 {
+    match c {
+        b'a' => 7,
+        b'b' => 8,
+        b't' => b'\t',
+        b'n' => b'\n',
+        b'v' => 11,
+        b'f' => 12,
+        b'r' => b'\r',
+        b'e' => 27,
+        b'0' => b'\0',
+        _ => c,
+    }
 }
 
 /// Returns `true` if the given byte is the start of an identifier.
@@ -200,9 +235,10 @@ impl Token {
         }
     }
 
-    pub fn with_str(s: &'static str, loc: Loc) -> Self {
+    pub fn with_str(mut s: String, loc: Loc) -> Self {
+        s.push('\0');
         Self {
-            data: TokenKind::Str(format!("{}\0", s).leak()),
+            data: TokenKind::Str(s.leak()),
             loc,
         }
     }

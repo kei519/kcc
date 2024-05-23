@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use std::mem;
+use std::{cell::RefCell, mem, rc::Rc};
 
 use crate::{
     tokenize::{Token, TokenKind},
@@ -12,8 +12,9 @@ use crate::{
 pub struct Parser {
     input: &'static str,
     tokens: Vec<Token>,
-    locals: Vec<Var>,
-    globals: Vec<Var>,
+    scope: Vec<Rc<RefCell<Var>>>,
+    locals: Vec<Rc<RefCell<Var>>>,
+    globals: Vec<Rc<RefCell<Var>>>,
     num_label: usize,
     pos: usize,
 }
@@ -23,6 +24,7 @@ impl Parser {
         Self {
             input,
             tokens,
+            scope: vec![],
             locals: vec![],
             globals: vec![],
             num_label: 0,
@@ -51,39 +53,41 @@ impl Parser {
         }
     }
 
+    fn new_var(&mut self, name: &'static str, ty: Type, is_local: bool) -> Rc<RefCell<Var>> {
+        let var = Rc::new(RefCell::new(Var::new(name, ty, is_local)));
+
+        self.scope.push(var.clone());
+        var
+    }
+
     /// Pushes a given `var` into `self.locals`
     /// if it does not have the same name variable.
     ///
     /// Returns `true` if succeeds pushing.
-    fn push_var(&mut self, var: Var) -> bool {
-        if self.locals.iter().any(|item| item.name == var.name) {
-            false
-        } else {
-            self.locals.push(var);
-            true
-        }
+    fn new_lvar(&mut self, name: &'static str, ty: Type) -> Rc<RefCell<Var>> {
+        let var = self.new_var(name, ty, true);
+        self.locals.push(var.clone());
+        var
     }
 
     /// Pushes a given `var` into `self.globals`
     /// if it does not have the same name variable.
     ///
     /// Returns `true` if succeeds pushing.
-    fn push_gvar(&mut self, var: Var) -> bool {
-        if self.globals.iter().any(|item| item.name == var.name) {
-            false
-        } else {
-            self.globals.push(var);
-            true
-        }
+    fn new_gvar(&mut self, name: &'static str, ty: Type) -> Rc<RefCell<Var>> {
+        let var = self.new_var(name, ty, false);
+        self.globals.push(var.clone());
+        var
     }
 
     /// Finds declared variables,
     /// returns local one when the same name global and local oens are declared.
-    fn find_var(&mut self, name: &'static str) -> Option<&Var> {
-        self.locals
+    fn find_var(&mut self, name: &'static str) -> Option<Rc<RefCell<Var>>> {
+        self.scope
             .iter()
-            .chain(self.globals.iter())
-            .find(|var| var.name == name)
+            .rev()
+            .find(|var| var.borrow().name == name)
+            .map(|var| var.clone())
     }
 
     /// Determines whether the next top-level item is a function
@@ -228,19 +232,14 @@ impl Parser {
     /// ```text
     /// param = basetype ident
     /// ```
-    fn param(&mut self) -> Result<()> {
+    fn param(&mut self) -> Result<Rc<RefCell<Var>>> {
         let ty = self.basetype()?;
 
-        let name_loc = self.loc();
         let name = self.expect_ident()?;
         let ty = self.read_type_suffix(ty)?;
 
         // Pushes in locals because parameters are the same as locals.
-        if self.push_var(Var::new(name, ty, true)) {
-            Ok(())
-        } else {
-            self.comp_err("same name variable is already declared", name_loc)
-        }
+        Ok(self.new_lvar(name, ty))
     }
 
     /// Returns the number of parameters.
@@ -248,19 +247,17 @@ impl Parser {
     /// ```text
     /// params = param ( "," param )*
     /// ```
-    fn params(&mut self) -> Result<usize> {
-        let mut num = 0;
-
-        if self.param().is_err() {
-            return Ok(num);
+    fn params(&mut self) -> Result<Vec<Rc<RefCell<Var>>>> {
+        let Ok(param) = self.param() else {
+            return Ok(vec![]);
         };
-        num += 1;
+        let mut params = vec![param];
 
         while self.consume(",") {
-            self.param()?;
-            num += 1;
+            let param = self.param()?;
+            params.push(param);
         }
-        Ok(num)
+        Ok(params)
     }
 
     /// ```text
@@ -305,17 +302,19 @@ impl Parser {
             }
 
             let Some(var) = self.find_var(name) else {
-                return self.comp_err("this variable is not declared", loc);
+                return self.comp_err("undeclared variable", loc);
             };
-            Node::with_var(name, var.ty.clone(), loc)
+            Node::with_var(var, loc)
         } else if let TokenKind::Str(s) = self.tok().data {
             self.next();
 
             let label = self.new_label();
-            let var = Var::with_str(label, s);
-            let ty = var.ty.clone();
-            self.push_gvar(var);
-            Node::with_var(label, ty, loc)
+            let var = self.new_gvar(label, Type::with_str(s.len()));
+            {
+                let mut var = var.borrow_mut();
+                var.kind = VarKind::Str(s);
+            }
+            Node::with_var(var, loc)
         } else {
             Node::with_num(self.expect_num()?, loc)
         };
@@ -507,7 +506,9 @@ impl Parser {
             return self.comp_err("variable name is required", self.loc());
         };
         let ty = self.read_type_suffix(ty)?;
-        let var = Node::with_var(name, ty.clone(), name_loc);
+
+        let var = self.new_lvar(name, ty);
+        let var = Node::with_var(var, name_loc);
 
         let init = if self.consume("=") {
             Some(self.expr()?)
@@ -518,12 +519,7 @@ impl Parser {
         let loc = loc + self.loc();
         self.expect(";")?;
 
-        // Declaration of the same name variable multiple times is not allowed.
-        if !self.push_var(Var::new(name, ty.clone(), true)) {
-            return self.comp_err("this variable is already declared", name_loc);
-        };
-
-        Ok(Node::with_var_decl(var, ty, init, loc))
+        Ok(Node::with_var_decl(var, init, loc))
     }
 
     /// ```text
@@ -690,7 +686,7 @@ impl Parser {
     /// ```text
     /// global-var = basetype ident ( "[" num "]" )* ";"
     /// ```
-    fn global_var(&mut self) -> Result<()> {
+    fn global_var(&mut self) -> Result<Rc<RefCell<Var>>> {
         let ty = self.basetype()?;
 
         let loc = self.loc();
@@ -701,10 +697,7 @@ impl Parser {
         let ty = self.read_type_suffix(ty)?;
         self.expect(";")?;
 
-        if !self.push_gvar(Var::new(name, ty, false)) {
-            return self.comp_err("same name variable is already declared", loc);
-        }
-        Ok(())
+        Ok(self.new_gvar(name, ty))
     }
 
     fn comp_err<T>(&self, msg: impl Into<String>, loc: Loc) -> Result<T> {
@@ -788,12 +781,11 @@ pub enum NodeKind {
     /// Variable declaration.
     VarDecl {
         var: Box<Node>,
-        ty: Type,
         /// Initial value.
         init: Option<Box<Node>>,
     },
     /// Variable.
-    Var(&'static str),
+    Var(Rc<RefCell<Var>>),
     /// Block.
     Block { stmts: Vec<Node> },
     /// Statement expression
@@ -821,12 +813,15 @@ pub enum NodeKind {
     Fn {
         name: &'static str,
         return_ty: Type,
-        num_params: usize,
+        params: Vec<Rc<RefCell<Var>>>,
         stmts: Vec<Node>,
-        locals: Vec<Var>,
+        locals: Vec<Rc<RefCell<Var>>>,
     },
     /// Whole program.
-    Program { funcs: Vec<Node>, globals: Vec<Var> },
+    Program {
+        funcs: Vec<Node>,
+        globals: Vec<Rc<RefCell<Var>>>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -912,11 +907,10 @@ impl Node {
         })
     }
 
-    pub fn with_var_decl(var: Node, ty: Type, init: Option<Node>, loc: Loc) -> Self {
+    pub fn with_var_decl(var: Node, init: Option<Node>, loc: Loc) -> Self {
         Self {
             data: NodeKind::VarDecl {
                 var: Box::new(var),
-                ty,
                 init: init.map(|node| Box::new(node)),
             },
             ty: Type::void(),
@@ -924,9 +918,10 @@ impl Node {
         }
     }
 
-    pub fn with_var(name: &'static str, ty: Type, loc: Loc) -> Self {
+    pub fn with_var(var: Rc<RefCell<Var>>, loc: Loc) -> Self {
+        let ty = var.borrow().ty.clone();
         Self {
-            data: NodeKind::Var(name),
+            data: NodeKind::Var(var),
             ty,
             loc,
         }
@@ -1021,16 +1016,16 @@ impl Node {
     pub fn with_fn(
         name: &'static str,
         return_ty: Type,
-        num_params: usize,
+        params: Vec<Rc<RefCell<Var>>>,
         stmts: Vec<Node>,
-        locals: Vec<Var>,
+        locals: Vec<Rc<RefCell<Var>>>,
         loc: Loc,
     ) -> Self {
         Self {
             data: NodeKind::Fn {
                 name,
                 return_ty,
-                num_params,
+                params,
                 stmts,
                 locals,
             },
@@ -1039,7 +1034,7 @@ impl Node {
         }
     }
 
-    pub fn with_prog(funcs: Vec<Node>, globals: Vec<Var>) -> Self {
+    pub fn with_prog(funcs: Vec<Node>, globals: Vec<Rc<RefCell<Var>>>) -> Self {
         // If there are some functions, the location is the merge of the first and the last.
         // Otherwise, the location is at the begginning, 0.
         let loc = if let Some(first) = funcs.first() {
@@ -1090,16 +1085,6 @@ impl Var {
             kind: VarKind::Others,
             ty,
             is_local,
-            offset: 0,
-        }
-    }
-
-    pub fn with_str(name: &'static str, s: &'static str) -> Self {
-        Self {
-            name,
-            kind: VarKind::Str(s),
-            ty: Type::with_array(Type::char_type(), s.len()),
-            is_local: false,
             offset: 0,
         }
     }

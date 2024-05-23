@@ -58,6 +58,16 @@ impl Type {
         }
     }
 
+    pub fn with_str(len: usize) -> Self {
+        Self {
+            kind: TypeKind::Array {
+                base: Box::new(Type::char_type()),
+                len: len,
+            },
+            size: len,
+        }
+    }
+
     pub fn void() -> Self {
         Self {
             kind: TypeKind::Void,
@@ -75,5 +85,9 @@ impl Type {
             TypeKind::Array { base, .. } => Some(*base.clone()),
             _ => None,
         }
+    }
+
+    pub fn is_array(&self) -> bool {
+        matches!(self.kind, TypeKind::Array { .. })
     }
 }

@@ -1,10 +1,10 @@
 use crate::{
-    parse::{BinOpKind, Node, NodeKind, UnOpKind, Var, VarKind},
+    parse::{BinOpKind, Node, NodeKind, UnOpKind, VarKind},
     typing::{Type, TypeKind},
     util::{Error, Loc, Result, WORD_SIZE},
 };
 
-use std::{collections::HashSet, fs::File, io::Write, path::Path};
+use std::{fs::File, io::Write, path::Path};
 
 /// Registers used to pass function variables.
 const ARG_REG1: [&'static str; 6] = ["dil", "sil", "dl", "cl", "r8b", "r9b"];
@@ -15,10 +15,6 @@ pub struct Generator<W: Write> {
     input: &'static str,
     /// Writer to write a generated assembly code.
     writer: W,
-    /// Local variables.
-    locals: HashSet<Var>,
-    /// Global variables.
-    globals: HashSet<Var>,
     /// The number of jump labels.
     num_label: usize,
 }
@@ -30,8 +26,6 @@ impl Generator<File> {
         Ok(Self {
             input,
             writer: file,
-            locals: HashSet::new(),
-            globals: HashSet::new(),
             num_label: 0,
         })
     }
@@ -309,14 +303,11 @@ impl<W: Write> Generator<W> {
             }
             NodeKind::Fn {
                 name,
-                num_params,
+                params,
                 stmts,
                 locals,
                 ..
             } => {
-                // Reset the locals.
-                self.locals.clear();
-
                 // Write the prolouge.
                 writeln!(self.writer, ".global {}", name)?;
                 writeln!(self.writer, "{}:", name)?;
@@ -326,16 +317,10 @@ impl<W: Write> Generator<W> {
                 // Determins the offset of each local variables.
                 let mut offset = 0;
 
-                let mut params_names = Vec::with_capacity(num_params);
-                params_names.resize(num_params, "");
-
-                for (i, mut local) in locals.into_iter().enumerate().rev() {
+                for local in locals.into_iter().rev() {
+                    let mut local = local.borrow_mut();
                     offset += local.ty.size;
                     local.offset = offset;
-                    if i < num_params {
-                        params_names[i] = local.name;
-                    }
-                    self.locals.insert(local);
                 }
 
                 // Allocates memory for global variables.
@@ -345,14 +330,9 @@ impl<W: Write> Generator<W> {
                 }
 
                 // Copy the arguments into the stack.
-                for (i, param_name) in params_names.into_iter().enumerate() {
-                    let (size, offset) = self
-                        .locals
-                        .iter()
-                        .find(|var| var.name == param_name)
-                        .map(|var| (var.ty.size, var.offset))
-                        .unwrap();
-
+                for (i, param) in params.into_iter().enumerate() {
+                    let param = param.borrow();
+                    let (size, offset) = (param.ty.size, param.offset);
                     if size == 1 {
                         writeln!(self.writer, "  mov %{}, -{}(%rbp)", ARG_REG1[i], offset)?;
                     } else {
@@ -374,6 +354,7 @@ impl<W: Write> Generator<W> {
                 // Emits data
                 writeln!(self.writer, ".data")?;
                 for var in globals {
+                    let var = var.borrow();
                     writeln!(self.writer, ".global {}", var.name)?;
                     writeln!(self.writer, "{}:", var.name)?;
                     match var.kind {
@@ -386,7 +367,6 @@ impl<W: Write> Generator<W> {
                             }
                         }
                     }
-                    self.globals.insert(var);
                 }
 
                 // Emits text
@@ -401,13 +381,13 @@ impl<W: Write> Generator<W> {
 
     fn gen_lvar(&mut self, node: Node) -> Result<()> {
         match node.data {
-            NodeKind::Var(name) => {
+            NodeKind::Var(ref var) => {
                 // This unwrapping always succeed because existance of undeclared variable emit
                 // an error in parse phase.
-                let var = self.find_var(name).unwrap();
-                match var.ty.kind {
-                    TypeKind::Array { .. } => self.comp_err("not an lvalue", node.loc),
-                    _ => self.gen_addr(node),
+                if var.borrow().ty.is_array() {
+                    self.comp_err("not an lvalue", node.loc)
+                } else {
+                    self.gen_addr(node)
                 }
             }
             _ => self.gen_addr(node),
@@ -417,16 +397,15 @@ impl<W: Write> Generator<W> {
     /// Generates the address of the given `node`.
     fn gen_addr(&mut self, node: Node) -> Result<()> {
         match node.data {
-            NodeKind::Var(name) => {
+            NodeKind::Var(var) => {
                 // This unwrapping always succeed because existance of undeclared variable emit
                 // an error in parse phase.
-                let var = self.find_var(name).unwrap();
+                let var = var.borrow();
                 if var.is_local {
-                    let offset = var.offset;
-                    writeln!(self.writer, "  lea -{}(%rbp), %rdi", offset)?;
+                    writeln!(self.writer, "  lea -{}(%rbp), %rdi", var.offset)?;
                     writeln!(self.writer, "  push %rdi")?;
                 } else {
-                    writeln!(self.writer, "  lea {}(%rip), %rdi", name)?;
+                    writeln!(self.writer, "  lea {}(%rip), %rdi", var.name)?;
                     writeln!(self.writer, "  push %rdi")?;
                 }
                 Ok(())
@@ -465,15 +444,6 @@ impl<W: Write> Generator<W> {
         Ok(())
     }
 
-    /// Finds declared variables,
-    /// returns local one when the same name global and local oens are declared.
-    fn find_var(&self, name: &str) -> Option<&Var> {
-        self.locals
-            .iter()
-            .chain(self.globals.iter())
-            .find(|var| var.name == name)
-    }
-
     fn comp_err<T>(&self, msg: impl Into<String>, loc: Loc) -> Result<T> {
         Err(Error::CompileError {
             message: msg.into(),
@@ -483,6 +453,6 @@ impl<W: Write> Generator<W> {
     }
 }
 
-fn align_to(n: usize, align :usize) -> usize {
+fn align_to(n: usize, align: usize) -> usize {
     (n + align - 1) & !(align - 1)
 }

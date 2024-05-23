@@ -140,11 +140,7 @@ impl Parser {
     /// Ensures that the current token is a given string.
     fn expect(&mut self, s: &str) -> Result<()> {
         if !self.consume(s) {
-            return Err(Error::CompileError {
-                message: format!("expected '{}'", s),
-                input: self.input,
-                loc: self.tok().loc,
-            });
+            return self.comp_err(format!("expected '{}'", s), self.tok().loc);
         }
         Ok(())
     }
@@ -154,11 +150,7 @@ impl Parser {
             self.next();
             Ok(num)
         } else {
-            Err(Error::CompileError {
-                message: "number is required".into(),
-                input: self.input,
-                loc: self.tok().loc,
-            })
+            self.comp_err("number is required", self.tok().loc)
         }
     }
 
@@ -172,11 +164,10 @@ impl Parser {
     }
 
     fn expect_ident(&mut self) -> Result<&'static str> {
-        self.consume_ident().ok_or(Error::CompileError {
-            message: "identifier is required".into(),
-            input: self.input,
-            loc: self.tok().loc,
-        })
+        match self.consume_ident() {
+            Some(name) => Ok(name),
+            None => self.comp_err("identifier is required", self.tok().loc),
+        }
     }
 
     /// Returns true if the next token represents a type.
@@ -243,11 +234,7 @@ impl Parser {
         if self.push_var(Var::new(name, ty, true)) {
             Ok(())
         } else {
-            Err(Error::CompileError {
-                message: "same name variable is already declared".into(),
-                input: self.input,
-                loc: name_loc,
-            })
+            self.comp_err("same name variable is already declared", name_loc)
         }
     }
 
@@ -313,11 +300,7 @@ impl Parser {
             }
 
             let Some(var) = self.find_var(name) else {
-                return Err(Error::CompileError {
-                    message: "this variable is not declared".into(),
-                    input: self.input,
-                    loc: loc,
-                });
+                return self.comp_err("this variable is not declared", loc);
             };
             Node::with_var(name, var.ty.clone(), loc)
         } else if let TokenKind::Str(s) = self.tok().data {
@@ -373,7 +356,7 @@ impl Parser {
 
             // x[y] is short for *(x+y)
             let exp = Node::with_binop(BinOpKind::Add, node, self.expr()?)
-                .ok_or_else(|| binop_err(self.input, exp_loc))?;
+                .ok_or_else(|| self.binop_err(exp_loc))?;
 
             let loc = loc + self.tok().loc;
             self.expect("]")?;
@@ -400,7 +383,7 @@ impl Parser {
             } else {
                 break left;
             }
-            .ok_or_else(|| binop_err(self.input, op_loc))?;
+            .ok_or_else(|| self.binop_err(op_loc))?;
         };
 
         Ok(node)
@@ -423,7 +406,7 @@ impl Parser {
             } else {
                 break left;
             }
-            .ok_or_else(|| binop_err(self.input, op_loc))?;
+            .ok_or_else(|| self.binop_err(op_loc))?;
         };
 
         Ok(node)
@@ -452,7 +435,7 @@ impl Parser {
             } else {
                 break left;
             }
-            .ok_or_else(|| binop_err(self.input, op_loc))?;
+            .ok_or_else(|| self.binop_err(op_loc))?;
         };
 
         Ok(node)
@@ -475,7 +458,7 @@ impl Parser {
             } else {
                 break left;
             }
-            .ok_or_else(|| binop_err(self.input, op_loc))?;
+            .ok_or_else(|| self.binop_err(op_loc))?;
         };
 
         Ok(node)
@@ -494,7 +477,7 @@ impl Parser {
         } else {
             Some(left)
         }
-        .ok_or_else(|| binop_err(self.input, op_loc))?;
+        .ok_or_else(|| self.binop_err(op_loc))?;
 
         Ok(node)
     }
@@ -516,11 +499,7 @@ impl Parser {
 
         let name_loc = self.tok().loc;
         let Some(name) = self.consume_ident() else {
-            return Err(Error::CompileError {
-                message: "variable name is required".into(),
-                input: self.input,
-                loc: self.tok().loc,
-            });
+            return self.comp_err("variable name is required", self.tok().loc);
         };
         let ty = self.read_type_suffix(ty)?;
         let var = Node::with_var(name, ty.clone(), name_loc);
@@ -536,11 +515,7 @@ impl Parser {
 
         // Declaration of the same name variable multiple times is not allowed.
         if !self.push_var(Var::new(name, ty.clone(), true)) {
-            return Err(Error::CompileError {
-                message: "this variable is already declared".into(),
-                input: self.input,
-                loc: name_loc,
-            });
+            return self.comp_err("this variable is already declared", name_loc);
         };
 
         Ok(Node::with_var_decl(var, ty, init, loc))
@@ -555,11 +530,7 @@ impl Parser {
         let stmt = match self.stmt() {
             Ok(stmt) => stmt,
             Err(_) => {
-                return Err(Error::CompileError {
-                    message: "stmt expr must have one or more stmt".into(),
-                    input: self.input,
-                    loc,
-                })
+                return self.comp_err("stmt expr must have one or more stmt", loc);
             }
         };
         let mut stmts = vec![stmt];
@@ -570,11 +541,7 @@ impl Parser {
 
         let last_stmt = stmts.last().unwrap();
         if last_stmt.ty.kind == TypeKind::Void {
-            Err(Error::CompileError {
-                message: "stmt expr returning void is not supported".into(),
-                input: self.input,
-                loc: last_stmt.loc,
-            })
+            self.comp_err("stmt expr returning void is not supported", last_stmt.loc)
         } else {
             let loc = loc + self.tok().loc;
             self.expect(")")?;
@@ -605,11 +572,7 @@ impl Parser {
 
             while !self.consume("}") {
                 if self.tok().data == TokenKind::Eof {
-                    return Err(Error::CompileError {
-                        message: "this brace is not closed".into(),
-                        input: self.input,
-                        loc: brace_loc,
-                    });
+                    return self.comp_err("this brace is not closed", brace_loc);
                 }
                 stmts.push(self.stmt()?);
                 loc += self.tok().loc;
@@ -726,23 +689,35 @@ impl Parser {
         let ty = self.basetype()?;
 
         let loc = self.tok().loc;
-        let name = self.consume_ident().ok_or_else(|| Error::CompileError {
-            message: "identifier is required".into(),
-            input: self.input,
-            loc,
-        })?;
+        let Some(name) = self.consume_ident() else {
+            return self.comp_err("identifier is required", loc);
+        };
 
         let ty = self.read_type_suffix(ty)?;
         self.expect(";")?;
 
         if !self.push_gvar(Var::new(name, ty, false)) {
-            return Err(Error::CompileError {
-                message: "same name variable is already declared".into(),
-                input: self.input,
-                loc,
-            });
+            return self.comp_err("same name variable is already declared", loc);
         }
         Ok(())
+    }
+
+    fn comp_err<T>(&self, msg: impl Into<String>, loc: Loc) -> Result<T> {
+        Err(Error::CompileError {
+            message: msg.into(),
+            input: self.input,
+            loc,
+        })
+    }
+
+    /// [Node::with_binop()] can return `None` when the combination of `lhs` and `rhs` type is invald.
+    /// This function converts `None` to [Error] with [Option::ok_or_else()].
+    fn binop_err(&self, loc: Loc) -> Error {
+        Error::CompileError {
+            message: "invalid operand".into(),
+            input: self.input,
+            loc,
+        }
     }
 }
 
@@ -1081,16 +1056,6 @@ impl Node {
             ty: Type::void(),
             loc,
         }
-    }
-}
-
-/// [Node::with_binop()] can return `None` when the combination of `lhs` and `rhs` type is invald.
-/// This function converts `None` to [Error] with [Option::ok_or_else()].
-fn binop_err(input: &'static str, loc: Loc) -> Error {
-    Error::CompileError {
-        message: "invalid operand".into(),
-        input,
-        loc,
     }
 }
 

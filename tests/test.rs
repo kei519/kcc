@@ -668,3 +668,55 @@ fn test97() {
 fn test98() {
     test!(8, "int main() { int x[3][4]; return sizeof(**x + 1); }");
 }
+
+#[test]
+fn test99() {
+    test!(0, "int x; int main() { return x; }");
+}
+
+#[test]
+fn test100() {
+    test!(3, "int x; int main() { x = 3; return x; }");
+}
+
+#[test]
+fn test101() {
+    test!(
+        0,
+        "int x[4]; int main() { x[0]=0; x[1]=1; x[2]=2; x[3]=3; return x[0]; }"
+    );
+}
+
+#[test]
+fn test102() {
+    test!(
+        1,
+        "int x[4]; int main() { x[0]=0; x[1]=1; x[2]=2; x[3]=3; return x[1]; }"
+    );
+}
+
+#[test]
+fn test103() {
+    test!(
+        2,
+        "int x[4]; int main() { x[0]=0; x[1]=1; x[2]=2; x[3]=3; return x[2]; }"
+    );
+}
+
+#[test]
+fn test104() {
+    test!(
+        3,
+        "int x[4]; int main() { x[0]=0; x[1]=1; x[2]=2; x[3]=3; return x[3]; }"
+    );
+}
+
+#[test]
+fn test105() {
+    test!(8, "int x; int main() { return sizeof(x); }");
+}
+
+#[test]
+fn test106() {
+    test!(32, "int x[4]; int main() { return sizeof(x); }");
+}

@@ -13,6 +13,7 @@ pub struct Parser {
     input: &'static str,
     tokens: Vec<Token>,
     locals: Vec<Var>,
+    globals: Vec<Var>,
     pos: usize,
 }
 
@@ -22,6 +23,7 @@ impl Parser {
             input,
             tokens,
             locals: vec![],
+            globals: vec![],
             pos: 0,
         }
     }
@@ -43,7 +45,7 @@ impl Parser {
     }
 
     /// Pushes a given `var` into `self.locals`
-    /// if it does not aloready have the same name variable.
+    /// if it does not have the same name variable.
     ///
     /// Returns `true` if succeeds pushing.
     fn push_var(&mut self, var: Var) -> bool {
@@ -55,19 +57,58 @@ impl Parser {
         }
     }
 
+    /// Pushes a given `var` into `self.globals`
+    /// if it does not have the same name variable.
+    ///
+    /// Returns `true` if succeeds pushing.
+    fn push_gvar(&mut self, var: Var) -> bool {
+        if self.globals.iter().any(|item| item.name == var.name) {
+            false
+        } else {
+            self.globals.push(var);
+            true
+        }
+    }
+
+    /// Finds declared variables,
+    /// returns local one when the same name global and local oens are declared.
+    fn find_var(&mut self, name: &'static str) -> Option<&Var> {
+        self.locals
+            .iter()
+            .chain(self.globals.iter())
+            .find(|var| var.name == name)
+    }
+
+    /// Determines whether the next top-level item is a function
+    /// of a global variable by looking ahead input tokens.
+    fn is_function(&mut self) -> Result<bool> {
+        // Saves current position to restore it after the operation below.
+        let pos = self.pos;
+
+        self.basetype()?;
+        let is_func = self.consume_ident().is_some() && self.consume("(");
+
+        self.pos = pos;
+        Ok(is_func)
+    }
+
     /// Parses the whole program.
     ///
     /// ```text
-    /// program = function*
+    /// program = ( global-var | function )*
     /// ```
     pub fn parse(mut self) -> Result<Node> {
         let mut funcs = vec![];
 
         while TokenKind::Eof != self.tok().data {
-            funcs.push(self.function()?);
+            if self.is_function()? {
+                funcs.push(self.function()?);
+            } else {
+                self.global_var()?;
+            }
         }
 
-        Ok(Node::with_prog(funcs))
+        Ok(Node::with_prog(funcs, self.globals))
     }
 
     /// Consumes the current token if it matches a given string.
@@ -182,7 +223,7 @@ impl Parser {
         let ty = self.read_type_suffix(ty)?;
 
         // Pushes in locals because parameters are the same as locals.
-        if self.push_var(Var::new(name, ty)) {
+        if self.push_var(Var::new(name, ty, true)) {
             Ok(())
         } else {
             Err(Error::CompileError {
@@ -250,7 +291,7 @@ impl Parser {
                 ));
             }
 
-            let Some(var) = self.locals.iter().find(|var| var.name == name) else {
+            let Some(var) = self.find_var(name) else {
                 return Err(Error::CompileError {
                     message: "this variable is not declared".into(),
                     input: self.input,
@@ -457,7 +498,7 @@ impl Parser {
         self.expect(";")?;
 
         // Declaration of the same name variable multiple times is not allowed.
-        if !self.push_var(Var::new(name, ty.clone())) {
+        if !self.push_var(Var::new(name, ty.clone(), true)) {
             return Err(Error::CompileError {
                 message: "this variable is already declared".into(),
                 input: self.input,
@@ -604,6 +645,32 @@ impl Parser {
         let locals = mem::replace(&mut self.locals, vec![]);
         Ok(Node::with_fn(name, ty, num_params, stmts, locals, loc))
     }
+
+    /// ```text
+    /// global-var = basetype ident ( "[" num "]" )* ";"
+    /// ```
+    fn global_var(&mut self) -> Result<()> {
+        let ty = self.basetype()?;
+
+        let loc = self.tok().loc;
+        let name = self.consume_ident().ok_or_else(|| Error::CompileError {
+            message: "identifier is required".into(),
+            input: self.input,
+            loc,
+        })?;
+
+        let ty = self.read_type_suffix(ty)?;
+        self.expect(";")?;
+
+        if !self.push_gvar(Var::new(name, ty, false)) {
+            return Err(Error::CompileError {
+                message: "same name variable is already declared".into(),
+                input: self.input,
+                loc,
+            });
+        }
+        Ok(())
+    }
 }
 
 /// Represents a unary operator.
@@ -708,7 +775,7 @@ pub enum NodeKind {
         locals: Vec<Var>,
     },
     /// Whole program.
-    Program { funcs: Vec<Node> },
+    Program { funcs: Vec<Node>, globals: Vec<Var> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -907,7 +974,7 @@ impl Node {
         }
     }
 
-    pub fn with_prog(funcs: Vec<Node>) -> Self {
+    pub fn with_prog(funcs: Vec<Node>, globals: Vec<Var>) -> Self {
         // If there are some functions, the location is the merge of the first and the last.
         // Otherwise, the location is at the begginning, 0.
         let loc = if let Some(first) = funcs.first() {
@@ -921,7 +988,7 @@ impl Node {
         };
 
         Self {
-            data: NodeKind::Program { funcs },
+            data: NodeKind::Program { funcs, globals },
             ty: Type::void(),
             loc,
         }
@@ -945,15 +1012,18 @@ pub struct Var {
     pub name: &'static str,
     /// Type.
     pub ty: Type,
+    /// local of global
+    pub is_local: bool,
     /// Variable offset from RBP.
     pub offset: usize,
 }
 
 impl Var {
-    pub fn new(name: &'static str, ty: Type) -> Self {
+    pub fn new(name: &'static str, ty: Type, is_local: bool) -> Self {
         Self {
             name,
             ty,
+            is_local,
             offset: 0,
         }
     }

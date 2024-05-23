@@ -720,3 +720,37 @@ fn test105() {
 fn test106() {
     test!(32, "int x[4]; int main() { return sizeof(x); }");
 }
+
+#[test]
+fn test107() {
+    test!(1, "int main() { char x=1; return x; }");
+}
+
+#[test]
+fn test108() {
+    test!(1, "int main() { char x=1; char y=2; return x; }");
+}
+
+#[test]
+fn test109() {
+    test!(2, "int main() { char x=1; char y=2; return y; }");
+}
+
+#[test]
+fn test110() {
+    test!(1, "int main() { char x; return sizeof(x); }");
+}
+
+#[test]
+fn test111() {
+    test!(10, "int main() { char x[10]; return sizeof(x); }");
+}
+
+#[test]
+fn test112() {
+    test!(
+        1,
+        r"int main() { return sub_char(7, 3, 3); }
+        int sub_char(char a, char b, char c) { return a-b-c; }"
+    );
+}

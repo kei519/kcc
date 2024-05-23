@@ -5,7 +5,7 @@ use std::mem;
 
 use crate::{
     tokenize::{Token, TokenKind},
-    typing::{Type, TypeKind},
+    typing::Type,
     util::{Error, Loc, Result},
 };
 
@@ -171,12 +171,21 @@ impl Parser {
         })
     }
 
+    /// Returns true if the next token represents a type.
+    fn is_typename(&self) -> bool {
+        self.peek("char") || self.peek("int")
+    }
+
     /// ```text
-    /// basetype = "int" "*"*
+    /// basetype = ( "char" | "int" ) "*"*
     /// ```
     fn basetype(&mut self) -> Result<Type> {
-        self.expect("int")?;
-        let mut ty = Type::new(TypeKind::Int);
+        let mut ty = if self.consume("char") {
+            Type::char_type()
+        } else {
+            self.expect("int")?;
+            Type::int_type()
+        };
 
         while self.consume("*") {
             ty = Type::with_ptr(ty);
@@ -283,12 +292,7 @@ impl Parser {
                 let loc = loc + self.tok().loc;
                 self.expect(")")?;
 
-                return Ok(Node::with_fn_call(
-                    name,
-                    Type::new(TypeKind::Int),
-                    args,
-                    loc,
-                ));
+                return Ok(Node::with_fn_call(name, Type::int_type(), args, loc));
             }
 
             let Some(var) = self.find_var(name) else {
@@ -526,7 +530,7 @@ impl Parser {
     ///      | "if" "(" expr ")" ( "else" "if" "(" expr ")" stmt )* ( "else" stmt )?
     /// ```
     fn stmt(&mut self) -> Result<Node> {
-        if self.peek("int") {
+        if self.is_typename() {
             return self.decl();
         }
 
@@ -797,7 +801,7 @@ impl Node {
     pub fn with_num(num: usize, loc: Loc) -> Self {
         Self {
             data: NodeKind::Num(num),
-            ty: Type::new(TypeKind::Int),
+            ty: Type::int_type(),
             loc,
         }
     }
@@ -809,9 +813,9 @@ impl Node {
             UnOpKind::Addr => Type::with_ptr(operand.ty.clone()),
             UnOpKind::Deref => match operand.ty.base() {
                 Some(base) => base,
-                None => Type::new(TypeKind::Int),
+                None => Type::int_type(),
             },
-            _ => Type::new(TypeKind::Int),
+            _ => Type::int_type(),
         };
 
         Self {
@@ -834,7 +838,7 @@ impl Node {
         let (op, ty) = match op {
             BinOpKind::Add => {
                 if lhs.ty.is_integer() && rhs.ty.is_integer() {
-                    (op, Type::new(TypeKind::Int))
+                    (op, Type::int_type())
                 } else if lhs.ty.base().is_some() && rhs.ty.is_integer() {
                     (BinOpKind::PtrAdd, lhs.ty.clone())
                 } else if lhs.ty.is_integer() && rhs.ty.base().is_some() {
@@ -845,7 +849,7 @@ impl Node {
             }
             BinOpKind::Sub => {
                 if lhs.ty.is_integer() && rhs.ty.is_integer() {
-                    (op, Type::new(TypeKind::Int))
+                    (op, Type::int_type())
                 } else if lhs.ty.base().is_some() && rhs.ty.is_integer() {
                     (BinOpKind::PtrSub, lhs.ty.clone())
                 } else if lhs.ty.base().is_some() && rhs.ty.base().is_some() {
@@ -855,7 +859,7 @@ impl Node {
                 }
             }
             BinOpKind::Assign => (op, lhs.ty.clone()),
-            _ => (op, Type::new(TypeKind::Int)),
+            _ => (op, Type::int_type()),
         };
 
         Some(Self {

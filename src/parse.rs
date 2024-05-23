@@ -14,6 +14,7 @@ pub struct Parser {
     tokens: Vec<Token>,
     locals: Vec<Var>,
     globals: Vec<Var>,
+    num_label: usize,
     pos: usize,
 }
 
@@ -24,6 +25,7 @@ impl Parser {
             tokens,
             locals: vec![],
             globals: vec![],
+            num_label: 0,
             pos: 0,
         }
     }
@@ -90,6 +92,12 @@ impl Parser {
 
         self.pos = pos;
         Ok(is_func)
+    }
+
+    fn new_label(&mut self) -> &'static str {
+        let buf = format!(".L.data.{}", self.num_label).leak();
+        self.num_label += 1;
+        buf
     }
 
     /// Parses the whole program.
@@ -264,7 +272,7 @@ impl Parser {
     }
 
     /// ```text
-    /// primary = "(" expr ")" | "sizeof" unary | ident ( "(" func-args ")" )? | num
+    /// primary = "(" expr ")" | "sizeof" unary | ident ( "(" func-args ")" )? | str | num
     /// ```
     fn primary(&mut self) -> Result<Node> {
         let loc = self.tok().loc;
@@ -303,6 +311,14 @@ impl Parser {
                 });
             };
             Node::with_var(name, var.ty.clone(), loc)
+        } else if let TokenKind::Str(s) = self.tok().data {
+            self.next();
+
+            let label = self.new_label();
+            let var = Var::with_str(label, s);
+            let ty = var.ty.clone();
+            self.push_gvar(var);
+            Node::with_var(label, ty, loc)
         } else {
             Node::with_num(self.expect_num()?, loc)
         };
@@ -1017,11 +1033,21 @@ fn binop_err(input: &'static str, loc: Loc) -> Error {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum VarKind {
+    /// String literal terminated with '\0'.
+    Str(&'static str),
+    /// Others.
+    Others,
+}
+
 /// Represets variable.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Var {
     /// Variable name.
     pub name: &'static str,
+    /// Variable kind if it is string.
+    pub kind: VarKind,
     /// Type.
     pub ty: Type,
     /// local of global
@@ -1034,8 +1060,19 @@ impl Var {
     pub fn new(name: &'static str, ty: Type, is_local: bool) -> Self {
         Self {
             name,
+            kind: VarKind::Others,
             ty,
             is_local,
+            offset: 0,
+        }
+    }
+
+    pub fn with_str(name: &'static str, s: &'static str) -> Self {
+        Self {
+            name,
+            kind: VarKind::Str(s),
+            ty: Type::with_array(Type::char_type(), s.len()),
+            is_local: false,
             offset: 0,
         }
     }

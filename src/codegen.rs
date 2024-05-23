@@ -189,15 +189,17 @@ impl<W: Write> Generator<W> {
                 writeln!(self.writer, "  sub ${}, %rsp", WORD_SIZE)?;
             }
             NodeKind::While { cond, stmt } => {
-                writeln!(self.writer, ".L.start.{}:", self.num_label)?;
+                let index = self.num_label;
+                self.num_label += 1;
+
+                writeln!(self.writer, ".L.start.{}:", index)?;
                 self.codegen(*cond)?;
                 writeln!(self.writer, "  pop %rax")?;
                 writeln!(self.writer, "  test %rax, %rax")?;
-                writeln!(self.writer, "  je .L.end.{}", self.num_label)?;
+                writeln!(self.writer, "  je .L.end.{}", index)?;
                 self.codegen(*stmt)?;
-                writeln!(self.writer, "  jmp .L.start.{}", self.num_label)?;
-                writeln!(self.writer, ".L.end.{}:", self.num_label)?;
-                self.num_label += 1;
+                writeln!(self.writer, "  jmp .L.start.{}", index)?;
+                writeln!(self.writer, ".L.end.{}:", index)?;
             }
             NodeKind::For {
                 init,
@@ -205,23 +207,25 @@ impl<W: Write> Generator<W> {
                 inc,
                 stmt,
             } => {
+                let index = self.num_label;
+                self.num_label += 1;
+
                 if let Some(init) = init {
                     self.codegen(*init)?;
                 }
-                writeln!(self.writer, ".L.start.{}:", self.num_label)?;
+                writeln!(self.writer, ".L.start.{}:", index)?;
                 if let Some(cond) = cond {
                     self.codegen(*cond)?;
                 }
                 writeln!(self.writer, "  pop %rax")?;
                 writeln!(self.writer, "  test %rax, %rax")?;
-                writeln!(self.writer, "  je .L.end.{}", self.num_label)?;
+                writeln!(self.writer, "  je .L.end.{}", index)?;
                 self.codegen(*stmt)?;
                 if let Some(inc) = inc {
                     self.codegen(*inc)?;
                 }
-                writeln!(self.writer, "  jmp .L.start.{}", self.num_label)?;
-                writeln!(self.writer, ".L.end.{}:", self.num_label)?;
-                self.num_label += 1;
+                writeln!(self.writer, "  jmp .L.start.{}", index)?;
+                writeln!(self.writer, ".L.end.{}:", index)?;
             }
             NodeKind::If {
                 cond,
@@ -230,36 +234,36 @@ impl<W: Write> Generator<W> {
                 elif_stmts,
                 else_stmt,
             } => {
+                let index = self.num_label;
+                self.num_label += 1;
                 self.codegen(*cond)?;
                 writeln!(self.writer, "  pop %rax")?;
                 writeln!(self.writer, "  test %rax, %rax")?;
-                writeln!(self.writer, "  jne .L.if.{}", self.num_label)?;
+                writeln!(self.writer, "  jne .L.if.{}", index)?;
 
                 for (i, cond) in elif_conds.into_iter().enumerate() {
                     self.codegen(cond)?;
                     writeln!(self.writer, "  pop %rax")?;
                     writeln!(self.writer, "  test %rax, %rax")?;
-                    writeln!(self.writer, "  jne .L.elif.{}.{}", i, self.num_label)?;
+                    writeln!(self.writer, "  jne .L.elif.{}.{}", i, index)?;
                 }
 
                 if let Some(else_stmt) = else_stmt {
                     self.codegen(*else_stmt)?;
                 }
-                writeln!(self.writer, "  jmp .L.end.{}", self.num_label)?;
+                writeln!(self.writer, "  jmp .L.end.{}", index)?;
 
-                writeln!(self.writer, ".L.if.{}:", self.num_label)?;
+                writeln!(self.writer, ".L.if.{}:", index)?;
                 self.codegen(*stmt)?;
-                writeln!(self.writer, "  jmp .L.end.{}", self.num_label)?;
+                writeln!(self.writer, "  jmp .L.end.{}", index)?;
 
                 for (i, stmt) in elif_stmts.into_iter().enumerate() {
-                    writeln!(self.writer, ".L.elif.{}.{}:", i, self.num_label)?;
+                    writeln!(self.writer, ".L.elif.{}.{}:", i, index)?;
                     self.codegen(stmt)?;
-                    writeln!(self.writer, "  jmp .L.end.{}", self.num_label)?;
+                    writeln!(self.writer, "  jmp .L.end.{}", index)?;
                 }
 
-                writeln!(self.writer, ".L.end.{}:", self.num_label)?;
-
-                self.num_label += 1;
+                writeln!(self.writer, ".L.end.{}:", index)?;
             }
             NodeKind::FnCall { name, args } => {
                 // Args passed with the stack is not yet supported.
@@ -284,23 +288,24 @@ impl<W: Write> Generator<W> {
                 // Ensure that RSP is 16-byte boundary.
                 // RAX is set to 0 for variadic function.
                 // RAX represents the number of vector registers used.
+                let index = self.num_label;
+                self.num_label += 1;
+
                 writeln!(self.writer, "  mov %rsp, %rax")?;
                 writeln!(self.writer, "  and $15, %rax")?;
-                writeln!(self.writer, "  jz .L.call.{}", self.num_label)?;
+                writeln!(self.writer, "  jz .L.call.{}", index)?;
                 writeln!(self.writer, "  mov $0, %rax")?;
                 writeln!(self.writer, "  call {}", name)?;
-                writeln!(self.writer, "  jmp .L.end.{}", self.num_label)?;
+                writeln!(self.writer, "  jmp .L.end.{}", index)?;
 
-                writeln!(self.writer, ".L.call.{}:", self.num_label)?;
+                writeln!(self.writer, ".L.call.{}:", index)?;
                 writeln!(self.writer, "  sub $8, %rsp")?;
                 writeln!(self.writer, "  mov $0, %rax")?;
                 writeln!(self.writer, "  call {}", name)?;
                 writeln!(self.writer, "  add $8, %rsp")?;
 
-                writeln!(self.writer, ".L.end.{}:", self.num_label)?;
+                writeln!(self.writer, ".L.end.{}:", index)?;
                 writeln!(self.writer, "  push %rax")?;
-
-                self.num_label += 1;
             }
             NodeKind::Fn {
                 name,

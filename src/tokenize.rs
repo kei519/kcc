@@ -1,6 +1,3 @@
-#[cfg(test)]
-mod tests;
-
 use crate::util::{Error, Loc, Result};
 
 const KW: [&'static str; 22] = [

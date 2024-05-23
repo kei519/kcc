@@ -285,7 +285,7 @@ impl<W: Write> Generator<W> {
                     writeln!(self.writer, "  pop %{}", ARG_REG8[i])?;
                 }
 
-                // Ensure that RSP is 16-byte boundary.
+                // Ensure that RSP is 16-byte boundary before calling a function.
                 // RAX is set to 0 for variadic function.
                 // RAX represents the number of vector registers used.
                 let index = self.num_label;
@@ -293,16 +293,16 @@ impl<W: Write> Generator<W> {
 
                 writeln!(self.writer, "  mov %rsp, %rax")?;
                 writeln!(self.writer, "  and $15, %rax")?;
-                writeln!(self.writer, "  jz .L.call.{}", index)?;
+                writeln!(self.writer, "  jnz .L.call.{}", index)?;
                 writeln!(self.writer, "  mov $0, %rax")?;
                 writeln!(self.writer, "  call {}", name)?;
                 writeln!(self.writer, "  jmp .L.end.{}", index)?;
 
                 writeln!(self.writer, ".L.call.{}:", index)?;
-                writeln!(self.writer, "  sub $8, %rsp")?;
+                writeln!(self.writer, "  sub ${}, %rsp", WORD_SIZE)?;
                 writeln!(self.writer, "  mov $0, %rax")?;
                 writeln!(self.writer, "  call {}", name)?;
-                writeln!(self.writer, "  add $8, %rsp")?;
+                writeln!(self.writer, "  add ${}, %rsp", WORD_SIZE)?;
 
                 writeln!(self.writer, ".L.end.{}:", index)?;
                 writeln!(self.writer, "  push %rax")?;

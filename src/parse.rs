@@ -5,7 +5,7 @@ use std::mem;
 
 use crate::{
     tokenize::{Token, TokenKind},
-    typing::Type,
+    typing::{Type, TypeKind},
     util::{Error, Loc, Result},
 };
 
@@ -272,21 +272,30 @@ impl Parser {
     }
 
     /// ```text
-    /// primary = "(" expr ")" | "sizeof" unary | ident ( "(" func-args ")" )? | str | num
+    /// primary = "(" "{" stmt-expr-tail
+    ///         | "(" expr ")"
+    ///         | "sizeof" unary
+    ///         | ident ( "(" func-args ")" )?
+    ///         | str
+    ///         | num
     /// ```
     fn primary(&mut self) -> Result<Node> {
         let loc = self.tok().loc;
 
         let node = if self.consume("(") {
-            let mut node = self.expr()?;
+            if self.consume("{") {
+                self.stmt_expr()?
+            } else {
+                let mut node = self.expr()?;
 
-            // The location of the node surrounded by parentheses is
-            // the merge of the both surrounding parentheses locations.
-            let loc = loc + self.tok().loc;
-            self.expect(")")?;
-            node.loc = loc;
+                // The location of the node surrounded by parentheses is
+                // the merge of the both surrounding parentheses locations.
+                let loc = loc + self.tok().loc;
+                self.expect(")")?;
+                node.loc = loc;
 
-            node
+                node
+            }
         } else if self.consume("sizeof") {
             let loc = loc + self.tok().loc;
             let node = self.unary()?;
@@ -538,6 +547,42 @@ impl Parser {
     }
 
     /// ```text
+    /// stmt-expr-tail = stmt-expr "}" ")"
+    /// stmt-expr = stmt+
+    /// ```
+    fn stmt_expr(&mut self) -> Result<Node> {
+        let loc = self.tok().loc;
+        let stmt = match self.stmt() {
+            Ok(stmt) => stmt,
+            Err(_) => {
+                return Err(Error::CompileError {
+                    message: "stmt expr must have one or more stmt".into(),
+                    input: self.input,
+                    loc,
+                })
+            }
+        };
+        let mut stmts = vec![stmt];
+
+        while !self.consume("}") {
+            stmts.push(self.stmt()?);
+        }
+
+        let last_stmt = stmts.last().unwrap();
+        if last_stmt.ty.kind == TypeKind::Void {
+            Err(Error::CompileError {
+                message: "stmt expr returning void is not supported".into(),
+                input: self.input,
+                loc: last_stmt.loc,
+            })
+        } else {
+            let loc = loc + self.tok().loc;
+            self.expect(")")?;
+            Ok(Node::with_stmt_expr(stmts, loc))
+        }
+    }
+
+    /// ```text
     /// stmt = declaration
     ///      | block = "{" stmt* "}"
     ///      | ( "return" )? expr ";"
@@ -775,6 +820,8 @@ pub enum NodeKind {
     Var(&'static str),
     /// Block.
     Block { stmts: Vec<Node> },
+    /// Statement expression
+    StmtExpr { stmts: Vec<Node> },
     /// while.
     While { cond: Box<Node>, stmt: Box<Node> },
     /// for.
@@ -913,6 +960,20 @@ impl Node {
         Self {
             data: NodeKind::Block { stmts },
             ty: Type::void(),
+            loc,
+        }
+    }
+
+    /// Returns `None` if returning void.
+    ///
+    /// # Remarks
+    ///
+    /// `stmts` must not be empty and the type of last stmt of `stmts` must not be `void`.
+    pub fn with_stmt_expr(stmts: Vec<Node>, loc: Loc) -> Self {
+        let ty = stmts.last().unwrap().ty.clone();
+        Self {
+            data: NodeKind::StmtExpr { stmts },
+            ty,
             loc,
         }
     }

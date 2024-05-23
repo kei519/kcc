@@ -1,7 +1,7 @@
 use crate::{
     parse::{BinOpKind, Node, NodeKind, UnOpKind, Var, VarKind},
     typing::{Type, TypeKind},
-    util::{Error, Result, WORD_SIZE},
+    util::{Error, Loc, Result, WORD_SIZE},
 };
 
 use std::{collections::HashSet, fs::File, io::Write, path::Path};
@@ -264,14 +264,13 @@ impl<W: Write> Generator<W> {
             NodeKind::FnCall { name, args } => {
                 // Args passed with the stack is not yet supported.
                 if args.len() > ARG_REG8.len() {
-                    return Err(Error::CompileError {
-                        message: format!(
+                    return self.comp_err(
+                        format!(
                             "function call with {} or more args is not supported",
                             ARG_REG8.len() + 1
                         ),
-                        input: self.input,
-                        loc: args[ARG_REG8.len()].loc,
-                    });
+                        args[ARG_REG8.len()].loc,
+                    );
                 }
 
                 let num_args = args.len();
@@ -396,11 +395,7 @@ impl<W: Write> Generator<W> {
                 // an error in parse phase.
                 let var = self.find_var(name).unwrap();
                 match var.ty.kind {
-                    TypeKind::Array { .. } => Err(Error::CompileError {
-                        message: "not an lvalue".into(),
-                        input: self.input,
-                        loc: node.loc,
-                    }),
+                    TypeKind::Array { .. } => self.comp_err("not an lvalue", node.loc),
                     _ => self.gen_addr(node),
                 }
             }
@@ -432,11 +427,7 @@ impl<W: Write> Generator<W> {
                 self.codegen(*operand)?;
                 Ok(())
             }
-            _ => Err(Error::CompileError {
-                message: "not an lvalue".into(),
-                input: self.input,
-                loc: node.loc,
-            }),
+            _ => self.comp_err("not an lvalue", node.loc),
         }
     }
 
@@ -470,6 +461,14 @@ impl<W: Write> Generator<W> {
             .iter()
             .chain(self.globals.iter())
             .find(|var| var.name == name)
+    }
+
+    fn comp_err<T>(&self, msg: impl Into<String>, loc: Loc) -> Result<T> {
+        Err(Error::CompileError {
+            message: msg.into(),
+            input: self.input,
+            loc,
+        })
     }
 }
 

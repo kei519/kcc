@@ -94,11 +94,7 @@ impl Tokenizer {
             }
 
             // Unrecognized token.
-            return Err(Error::CompileError {
-                message: "unrecoginized token".into(),
-                input: self.input,
-                loc: Loc::at(self.pos),
-            });
+            return self.comp_err("unrecognized token", Loc::at(self.pos));
         }
 
         ret.push(Token::with_eof(Loc::at(self.pos)));
@@ -152,11 +148,7 @@ impl Tokenizer {
         let mut is_escaping = false;
         loop {
             if !self.next() {
-                return Err(Error::CompileError {
-                    message: "unclosed string literal".into(),
-                    input: self.input,
-                    loc: Loc::at(self.pos),
-                });
+                return self.comp_err("unclosed string literal", Loc::at(self.pos));
             }
 
             if is_escaping {
@@ -179,6 +171,14 @@ impl Tokenizer {
         self.next();
         let end = self.pos;
         Ok(Token::with_str(buf, Loc::range(start, end)))
+    }
+
+    fn comp_err<T>(&self, msg: impl Into<String>, loc: Loc) -> Result<T> {
+        Err(Error::CompileError {
+            message: msg.into(),
+            input: self.input,
+            loc,
+        })
     }
 }
 

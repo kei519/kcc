@@ -824,3 +824,23 @@ fn test125() {
 fn test126() {
     test!(0, r#"int main() { return "\0"[0]; }"#);
 }
+
+#[test]
+fn test127() {
+    test!(0, "int main() { return ({ 0; }); }");
+}
+
+#[test]
+fn test128() {
+    test!(2, "int main() { return ({ 0; 1; 2; }); }");
+}
+
+#[test]
+fn test129() {
+    test!(1, "int main() { ({ 0; return 1; 2; }); return 3; }");
+}
+
+#[test]
+fn test130() {
+    test!(3, "int main() { return ({ int x=3; x; }); }");
+}

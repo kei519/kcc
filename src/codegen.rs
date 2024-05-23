@@ -184,6 +184,10 @@ impl<W: Write> Generator<W> {
                     self.codegen(stmt)?;
                 }
             }
+            NodeKind::StmtExpr { stmts } => {
+                self.codegen(Node::with_block(stmts, node.loc))?;
+                writeln!(self.writer, "  sub ${}, %rsp", WORD_SIZE)?;
+            }
             NodeKind::While { cond, stmt } => {
                 writeln!(self.writer, ".L.start.{}:", self.num_label)?;
                 self.codegen(*cond)?;

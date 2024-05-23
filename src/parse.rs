@@ -355,91 +355,99 @@ impl Parser {
     }
 
     /// ```text
-    /// mul = unary ( "*" mul | "/" mul )?
+    /// mul = unary ( "*" unary | "/" unary )*
     /// ```
     fn mul(&mut self) -> Result<Node> {
-        let left = self.unary()?;
+        let mut left = self.unary()?;
 
         let op_loc = self.tok().loc;
-        let node = if self.consume("*") {
-            let right = self.mul()?;
-            Node::with_binop(BinOpKind::Mul, left, right)
-        } else if self.consume("/") {
-            let right = self.mul()?;
-            Node::with_binop(BinOpKind::Div, left, right)
-        } else {
-            Some(left)
-        }
-        .ok_or_else(|| binop_err(self.input, op_loc))?;
+        let node = loop {
+            left = if self.consume("*") {
+                let right = self.unary()?;
+                Node::with_binop(BinOpKind::Mul, left, right)
+            } else if self.consume("/") {
+                let right = self.unary()?;
+                Node::with_binop(BinOpKind::Div, left, right)
+            } else {
+                break left;
+            }
+            .ok_or_else(|| binop_err(self.input, op_loc))?;
+        };
 
         Ok(node)
     }
 
     /// ```text
-    /// add = mul ( "+" add | "-" add )?
+    /// add = mul ( "+" mul | "-" mul )*
     /// ```
     fn add(&mut self) -> Result<Node> {
-        let left = self.mul()?;
+        let mut left = self.mul()?;
 
         let op_loc = self.tok().loc;
-        let node = if self.consume("+") {
-            let right = self.add()?;
-            Node::with_binop(BinOpKind::Add, left, right)
-        } else if self.consume("-") {
-            let right = self.add()?;
-            Node::with_binop(BinOpKind::Sub, left, right)
-        } else {
-            Some(left)
-        }
-        .ok_or_else(|| binop_err(self.input, op_loc))?;
+        let node = loop {
+            left = if self.consume("+") {
+                let right = self.mul()?;
+                Node::with_binop(BinOpKind::Add, left, right)
+            } else if self.consume("-") {
+                let right = self.mul()?;
+                Node::with_binop(BinOpKind::Sub, left, right)
+            } else {
+                break left;
+            }
+            .ok_or_else(|| binop_err(self.input, op_loc))?;
+        };
 
         Ok(node)
     }
 
     /// ```text
-    /// relational = add ( "<" relational | "<=" relational | ">" relational | ">=" relational)?
+    /// relational = add ( "<" add | "<=" add | ">" add | ">=" add)*
     /// ```
     fn relational(&mut self) -> Result<Node> {
-        let left = self.add()?;
+        let mut left = self.add()?;
 
         let op_loc = self.tok().loc;
-        let node = if self.consume("<") {
-            let right = self.relational()?;
-            Node::with_binop(BinOpKind::Lt, left, right)
-        } else if self.consume("<=") {
-            let right = self.relational()?;
-            Node::with_binop(BinOpKind::Le, left, right)
-        } else if self.consume(">") {
-            let right = self.relational()?;
-            Node::with_binop(BinOpKind::Gt, left, right)
-        } else if self.consume(">=") {
-            let right = self.relational()?;
-            Node::with_binop(BinOpKind::Ge, left, right)
-        } else {
-            Some(left)
-        }
-        .ok_or_else(|| binop_err(self.input, op_loc))?;
+        let node = loop {
+            left = if self.consume("<") {
+                let right = self.add()?;
+                Node::with_binop(BinOpKind::Lt, left, right)
+            } else if self.consume("<=") {
+                let right = self.add()?;
+                Node::with_binop(BinOpKind::Le, left, right)
+            } else if self.consume(">") {
+                let right = self.add()?;
+                Node::with_binop(BinOpKind::Gt, left, right)
+            } else if self.consume(">=") {
+                let right = self.add()?;
+                Node::with_binop(BinOpKind::Ge, left, right)
+            } else {
+                break left;
+            }
+            .ok_or_else(|| binop_err(self.input, op_loc))?;
+        };
 
         Ok(node)
     }
 
     /// ```text
-    /// equality = relational ( "==" equality | "!=" equality )?
+    /// equality = relational ( "==" relational | "!=" relational )*
     /// ```
     fn equality(&mut self) -> Result<Node> {
-        let left = self.relational()?;
+        let mut left = self.relational()?;
 
         let op_loc = self.tok().loc;
-        let node = if self.consume("==") {
-            let right = self.equality()?;
-            Node::with_binop(BinOpKind::Eq, left, right)
-        } else if self.consume("!=") {
-            let right = self.equality()?;
-            Node::with_binop(BinOpKind::Ne, left, right)
-        } else {
-            Some(left)
-        }
-        .ok_or_else(|| binop_err(self.input, op_loc))?;
+        let node = loop {
+            left = if self.consume("==") {
+                let right = self.relational()?;
+                Node::with_binop(BinOpKind::Eq, left, right)
+            } else if self.consume("!=") {
+                let right = self.relational()?;
+                Node::with_binop(BinOpKind::Ne, left, right)
+            } else {
+                break left;
+            }
+            .ok_or_else(|| binop_err(self.input, op_loc))?;
+        };
 
         Ok(node)
     }

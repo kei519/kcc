@@ -1,5 +1,5 @@
 use crate::{
-    parse::{BinOpKind, Node, NodeKind, UnOpKind, Var},
+    parse::{BinOpKind, Node, NodeKind, UnOpKind, Var, VarKind},
     typing::{Type, TypeKind},
     util::{Error, Result, WORD_SIZE},
 };
@@ -356,7 +356,16 @@ impl<W: Write> Generator<W> {
                 for var in globals {
                     writeln!(self.writer, ".global {}", var.name)?;
                     writeln!(self.writer, "{}:", var.name)?;
-                    writeln!(self.writer, "  .zero {}", var.ty.size)?;
+                    match var.kind {
+                        VarKind::Others => {
+                            writeln!(self.writer, "  .zero {}", var.ty.size)?;
+                        }
+                        VarKind::Str(s) => {
+                            for &b in s.as_bytes() {
+                                writeln!(self.writer, "  .byte {}", b)?;
+                            }
+                        }
+                    }
                     self.globals.insert(var);
                 }
 

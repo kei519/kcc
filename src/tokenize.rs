@@ -34,6 +34,27 @@ impl Tokenizer {
                 continue;
             }
 
+            if self.head() == b'"' {
+                let start = self.pos;
+
+                while self.next() && self.head() != b'"' {}
+                if self.cur().is_empty() {
+                    return Err(Error::CompileError {
+                        message: "unclosed string literal".into(),
+                        input: self.input,
+                        loc: Loc::at(self.pos),
+                    });
+                }
+
+                self.next();
+                let end = self.pos;
+                ret.push(Token::with_str(
+                    &self.input[start + 1..end - 1],
+                    Loc::range(start, end),
+                ));
+                continue;
+            }
+
             // Numeric literal.
             if self.head().is_ascii_digit() {
                 let start = self.pos;
@@ -111,10 +132,14 @@ impl Tokenizer {
     }
 
     /// Advances the cursor if the cursor will not exceed the input.
-    /// Returns `true` if the cursor is advanced.
+    /// Returns `true` if the cursor does not reach eof.
     fn next(&mut self) -> bool {
+        if self.pos >= self.input.len() {
+            return false;
+        }
+
+        self.pos += 1;
         if self.pos < self.input.len() {
-            self.pos += 1;
             true
         } else {
             false
@@ -151,6 +176,8 @@ fn is_ident_continue(c: u8) -> bool {
 pub enum TokenKind {
     /// Numeric literal.
     Num(usize),
+    /// String literal terminated with '\0'.
+    Str(&'static str),
     // Keyword.
     Reserved(&'static str),
     /// Identifier.
@@ -169,6 +196,13 @@ impl Token {
     pub fn with_num(num: usize, loc: Loc) -> Self {
         Self {
             data: TokenKind::Num(num),
+            loc,
+        }
+    }
+
+    pub fn with_str(s: &'static str, loc: Loc) -> Self {
+        Self {
+            data: TokenKind::Str(format!("{}\0", s).leak()),
             loc,
         }
     }

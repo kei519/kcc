@@ -754,3 +754,28 @@ fn test112() {
         int sub_char(char a, char b, char c) { return a-b-c; }"
     );
 }
+
+#[test]
+fn test113() {
+    test!(97, r#"int main() { return "abc"[0]; }"#);
+}
+
+#[test]
+fn test114() {
+    test!(98, r#"int main() { return "abc"[1]; }"#);
+}
+
+#[test]
+fn test115() {
+    test!(99, r#"int main() { return "abc"[2]; }"#);
+}
+
+#[test]
+fn test116() {
+    test!(0, r#"int main() { return "abc"[3]; }"#);
+}
+
+#[test]
+fn test117() {
+    test!(4, r#"int main() { return sizeof("abc"); }"#);
+}

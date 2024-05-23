@@ -3,6 +3,8 @@ use crate::util::WORD_SIZE;
 /// Represents a type.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeKind {
+    /// char
+    Char,
     /// int
     Int,
     /// Pointer.
@@ -21,15 +23,18 @@ pub struct Type {
 }
 
 impl Type {
-    pub fn new(kind: TypeKind) -> Self {
-        let size = match kind {
-            TypeKind::Int => WORD_SIZE,
-            TypeKind::Ptr { .. } => WORD_SIZE,
-            TypeKind::Void => 0,
-            TypeKind::Array { .. } => WORD_SIZE,
-        };
+    pub fn char_type() -> Self {
+        Self {
+            kind: TypeKind::Char,
+            size: 1,
+        }
+    }
 
-        Self { kind, size }
+    pub fn int_type() -> Self {
+        Self {
+            kind: TypeKind::Int,
+            size: 8,
+        }
     }
 
     pub fn with_ptr(base: Type) -> Self {
@@ -54,11 +59,14 @@ impl Type {
     }
 
     pub fn void() -> Self {
-        Self::new(TypeKind::Void)
+        Self {
+            kind: TypeKind::Void,
+            size: 0,
+        }
     }
 
     pub fn is_integer(&self) -> bool {
-        matches!(self.kind, TypeKind::Int)
+        matches!(self.kind, TypeKind::Char | TypeKind::Int)
     }
 
     pub fn base(&self) -> Option<Self> {

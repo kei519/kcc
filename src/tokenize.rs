@@ -8,7 +8,9 @@ const KW: [&'static str; 22] = [
     "{", "}", "=", "&",
 ];
 
-const SEP_KW: [&'static str; 7] = ["return", "int", "while", "for", "if", "else", "sizeof"];
+const SEP_KW: [&'static str; 8] = [
+    "return", "int", "while", "for", "if", "else", "sizeof", "char",
+];
 
 const SEP: [u8; 10] = [b';', b',', b'.', b':', b'(', b')', b'[', b']', b'{', b'}'];
 

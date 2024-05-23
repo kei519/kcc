@@ -1,13 +1,14 @@
 use crate::{
     parse::{BinOpKind, Node, NodeKind, UnOpKind, Var},
-    typing::TypeKind,
+    typing::{Type, TypeKind},
     util::{Error, Result, WORD_SIZE},
 };
 
 use std::{collections::HashSet, fs::File, io::Write, path::Path};
 
 /// Registers used to pass function variables.
-const ARG_REG: [&'static str; 6] = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
+const ARG_REG1: [&'static str; 6] = ["dil", "sil", "dl", "cl", "r8b", "r9b"];
+const ARG_REG8: [&'static str; 6] = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
 
 /// Represents an assembly code generator that writes to a writer.
 pub struct Generator<W: Write> {
@@ -73,7 +74,7 @@ impl<W: Write> Generator<W> {
                     UnOpKind::Deref => {
                         self.codegen(*operand)?;
                         if !matches!(node.ty.kind, TypeKind::Array { .. }) {
-                            self.load()?;
+                            self.load(&node.ty)?;
                         }
                     }
                 }
@@ -83,7 +84,7 @@ impl<W: Write> Generator<W> {
                     BinOpKind::Assign => {
                         self.gen_lvar(*lhs)?;
                         self.codegen(*rhs)?;
-                        self.store()?;
+                        self.store(&node.ty)?;
                         return Ok(());
                     }
                     _ => {}
@@ -168,14 +169,14 @@ impl<W: Write> Generator<W> {
 
                 self.gen_addr(*var)?;
                 self.codegen(*init)?;
-                self.store()?;
+                self.store(&node.ty)?;
                 writeln!(self.writer, "  add ${}, %rsp", WORD_SIZE)?;
             }
             NodeKind::Var(_) => {
-                let ty_kind = node.ty.kind.clone();
+                let ty = node.ty.clone();
                 self.gen_addr(node)?;
-                if !matches!(ty_kind, TypeKind::Array { .. }) {
-                    self.load()?;
+                if !matches!(ty.kind, TypeKind::Array { .. }) {
+                    self.load(&ty)?;
                 }
             }
             NodeKind::Block { stmts } => {
@@ -258,14 +259,14 @@ impl<W: Write> Generator<W> {
             }
             NodeKind::FnCall { name, args } => {
                 // Args passed with the stack is not yet supported.
-                if args.len() > ARG_REG.len() {
+                if args.len() > ARG_REG8.len() {
                     return Err(Error::CompileError {
                         message: format!(
                             "function call with {} or more args is not supported",
-                            ARG_REG.len() + 1
+                            ARG_REG8.len() + 1
                         ),
                         input: self.input,
-                        loc: args[ARG_REG.len()].loc,
+                        loc: args[ARG_REG8.len()].loc,
                     });
                 }
 
@@ -274,7 +275,7 @@ impl<W: Write> Generator<W> {
                     self.codegen(arg)?;
                 }
                 for i in (0..num_args).rev() {
-                    writeln!(self.writer, "  pop %{}", ARG_REG[i])?;
+                    writeln!(self.writer, "  pop %{}", ARG_REG8[i])?;
                 }
 
                 // Ensure that RSP is 16-byte boundary.
@@ -324,20 +325,25 @@ impl<W: Write> Generator<W> {
                 }
 
                 // Allocates memory for global variables.
+                offset = align_to(offset, WORD_SIZE);
                 if offset != 0 {
                     writeln!(self.writer, "  sub ${}, %rsp", offset)?;
                 }
 
                 // Copy the arguments into the stack.
                 for (i, param_name) in params_names.into_iter().enumerate() {
-                    let offset = self
+                    let (size, offset) = self
                         .locals
                         .iter()
                         .find(|var| var.name == param_name)
-                        .map(|var| var.offset)
+                        .map(|var| (var.ty.size, var.offset))
                         .unwrap();
 
-                    writeln!(self.writer, "  mov %{}, -{}(%rbp)", ARG_REG[i], offset)?;
+                    if size == 1 {
+                        writeln!(self.writer, "  mov %{}, -{}(%rbp)", ARG_REG1[i], offset)?;
+                    } else {
+                        writeln!(self.writer, "  mov %{}, -{}(%rbp)", ARG_REG8[i], offset)?;
+                    }
                 }
 
                 for stmt in stmts {
@@ -415,17 +421,25 @@ impl<W: Write> Generator<W> {
         }
     }
 
-    fn load(&mut self) -> Result<()> {
+    fn load(&mut self, ty: &Type) -> Result<()> {
         writeln!(self.writer, "  pop %rax")?;
-        writeln!(self.writer, "  mov (%rax), %rax")?;
+        if ty.size == 1 {
+            writeln!(self.writer, "  movsbq (%rax), %rax")?;
+        } else {
+            writeln!(self.writer, "  mov (%rax), %rax")?;
+        }
         writeln!(self.writer, "  push %rax")?;
         Ok(())
     }
 
-    fn store(&mut self) -> Result<()> {
+    fn store(&mut self, ty: &Type) -> Result<()> {
         writeln!(self.writer, "  pop %rax")?;
         writeln!(self.writer, "  pop %rdi")?;
-        writeln!(self.writer, "  mov %rax, (%rdi)")?;
+        if ty.size == 1 {
+            writeln!(self.writer, "  mov %al, (%rdi)")?;
+        } else {
+            writeln!(self.writer, "  mov %rax, (%rdi)")?;
+        }
         writeln!(self.writer, "  push %rax")?;
         Ok(())
     }
@@ -438,4 +452,8 @@ impl<W: Write> Generator<W> {
             .chain(self.globals.iter())
             .find(|var| var.name == name)
     }
+}
+
+fn align_to(n: usize, align :usize) -> usize {
+    (n + align - 1) & !(align - 1)
 }

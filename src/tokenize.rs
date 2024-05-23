@@ -34,6 +34,28 @@ impl Tokenizer {
                 continue;
             }
 
+            // Skips line comments.
+            if self.cur().starts_with(b"//") {
+                self.pos += 2;
+                while self.next() && self.head() != b'\n' {}
+                continue;
+            }
+
+            // Skips block comments.
+            if self.cur().starts_with(b"/*") {
+                self.pos += 2;
+                match self.cur().windows(2).position(|s| s == b"*/") {
+                    Some(pos) => self.pos += pos + 2,
+                    None => {
+                        return self.comp_err(
+                            "unclosed block comment",
+                            Loc::range(self.pos - 2, self.input.len()),
+                        )
+                    }
+                }
+                continue;
+            }
+
             if self.head() == b'"' {
                 ret.push(self.read_string_literal()?);
                 continue;
@@ -148,7 +170,7 @@ impl Tokenizer {
         let mut is_escaping = false;
         loop {
             if !self.next() {
-                return self.comp_err("unclosed string literal", Loc::at(self.pos));
+                return self.comp_err("unclosed string literal", Loc::range(start, self.pos));
             }
 
             if is_escaping {

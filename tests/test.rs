@@ -844,3 +844,14 @@ fn test129() {
 fn test130() {
     test!(3, "int main() { return ({ int x=3; x; }); }");
 }
+
+#[test]
+fn test131() {
+    test!(2, "int main() { /* return 1; */ return 2; }");
+}
+
+#[test]
+fn test132() {
+    test!(2, "int main() { // return 1;
+        return 2; }");
+}

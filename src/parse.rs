@@ -10,6 +10,7 @@ use crate::{
 };
 
 pub struct Parser {
+    file_name: &'static str,
     input: &'static str,
     tokens: Vec<Token>,
     scope: Vec<Rc<RefCell<Var>>>,
@@ -20,8 +21,9 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn new(input: &'static str, tokens: Vec<Token>) -> Self {
+    pub fn new(file_name: &'static str, input: &'static str, tokens: Vec<Token>) -> Self {
         Self {
+            file_name,
             input,
             tokens,
             scope: vec![],
@@ -724,6 +726,7 @@ impl Parser {
     fn comp_err<T>(&self, msg: impl Into<String>, loc: Loc) -> Result<T> {
         Err(Error::CompileError {
             message: msg.into(),
+            file_name: self.file_name,
             input: self.input,
             loc,
         })

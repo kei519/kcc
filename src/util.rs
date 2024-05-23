@@ -65,6 +65,7 @@ pub enum Error {
     /// Represents a error occured during compilation.
     CompileError {
         message: String,
+        file_name: &'static str,
         input: &'static str,
         loc: Loc,
     },
@@ -80,12 +81,26 @@ impl Display for Error {
             Self::ConfigError => Ok(()),
             Self::CompileError {
                 message,
+                file_name,
                 input,
                 loc,
             } => {
-                f.write_str(*input)?;
-                f.write_str("\n")?;
-                write!(f, "{:num$}^ {}", "", message, num = loc.start)
+                // Find a line containing `loc`.
+                let line_start = input[..loc.start].rfind("\n").map_or(0, |i| i + 1);
+                let line_end = input[loc.start..]
+                    .find("\n")
+                    .map_or_else(|| input.len(), |i| loc.start + i);
+                let line_num = input[..loc.start].bytes().filter(|&b| b == b'\n').count() + 1;
+
+                // Prints out the line.
+                let prefix = format!("{}:{} ", file_name, line_num);
+                let indent = prefix.len();
+
+                write!(f, "{}", prefix)?;
+                writeln!(f, "{}", &input[line_start..line_end])?;
+
+                let pos = indent + loc.start - line_start;
+                write!(f, "{:num$}^ {}", "", message, num = pos)
             }
             Self::IoError(e) => e.fmt(f),
             Self::Any(s) => f.write_str(s),

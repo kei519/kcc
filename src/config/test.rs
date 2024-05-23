@@ -8,7 +8,7 @@ fn test_no_arg() {
 #[test]
 fn test_one_input() {
     let config = Config::new(["hoge"]).unwrap();
-    assert_eq!(config.input, "hoge");
+    assert_eq!(config.file_name, "hoge");
     assert!(config.out_path.is_none());
 }
 
@@ -30,14 +30,14 @@ fn test_no_input_with_output() {
 #[test]
 fn test_one_input_with_output() {
     let config = Config::new(["hoge", "-o", "a.exe"]).unwrap();
-    assert_eq!(config.input, "hoge");
+    assert_eq!(config.file_name, "hoge");
     assert_eq!(config.out_path.unwrap(), "a.exe");
 }
 
 #[test]
 fn test_concat_output() {
     let config = Config::new(["hoge", "-oa.out"]).unwrap();
-    assert_eq!(config.input, "hoge");
+    assert_eq!(config.file_name, "hoge");
     assert_eq!(config.out_path.unwrap(), "a.out");
 }
 

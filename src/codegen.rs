@@ -12,6 +12,7 @@ const ARG_REG8: [&'static str; 6] = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
 
 /// Represents an assembly code generator that writes to a writer.
 pub struct Generator<W: Write> {
+    file_name: &'static str,
     input: &'static str,
     /// Writer to write a generated assembly code.
     writer: W,
@@ -20,10 +21,15 @@ pub struct Generator<W: Write> {
 }
 
 impl Generator<File> {
-    pub fn from_path(input: &'static str, path: impl AsRef<Path>) -> Result<Self> {
+    pub fn from_path(
+        file_name: &'static str,
+        input: &'static str,
+        path: impl AsRef<Path>,
+    ) -> Result<Self> {
         let file = File::create(path)?;
 
         Ok(Self {
+            file_name,
             input,
             writer: file,
             num_label: 0,
@@ -447,6 +453,7 @@ impl<W: Write> Generator<W> {
     fn comp_err<T>(&self, msg: impl Into<String>, loc: Loc) -> Result<T> {
         Err(Error::CompileError {
             message: msg.into(),
+            file_name: self.file_name,
             input: self.input,
             loc,
         })

@@ -5,6 +5,8 @@ mod tokenize;
 mod typing;
 mod util;
 
+use std::{fs::File, io::Read};
+
 use codegen::Generator;
 use config::Config;
 use tokenize::Tokenizer;
@@ -36,16 +38,23 @@ where
         }
     };
 
-    let input = config.input.leak();
-    let tokenizer = Tokenizer::new(input);
+    let file_name = config.file_name.leak();
+    let mut input = String::new();
+    match File::open(&file_name) {
+        Ok(mut file) => file.read_to_string(&mut input)?,
+        Err(e) => return Err(Error::Any(format!("cannot open {}: {}", &file_name, e))),
+    };
+    let input = input.leak();
+
+    let tokenizer = Tokenizer::new(file_name, input);
     let tokens = tokenizer.tokenize()?;
 
-    let parser = parse::Parser::new(input, tokens);
+    let parser = parse::Parser::new(file_name, input, tokens);
     let top_node = parser.parse()?;
 
     // Generate assembly.
     let asm_path = mktemp()?;
-    let mut gen = Generator::from_path(input, &asm_path)?;
+    let mut gen = Generator::from_path(file_name, input, &asm_path)?;
     gen.codegen(top_node)?;
 
     // Assemble the assembly.

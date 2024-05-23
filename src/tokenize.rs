@@ -15,13 +15,18 @@ const SEP_KW: [&'static str; 8] = [
 const SEP: [u8; 10] = [b';', b',', b'.', b':', b'(', b')', b'[', b']', b'{', b'}'];
 
 pub struct Tokenizer {
+    file_name: &'static str,
     input: &'static str,
     pos: usize,
 }
 
 impl Tokenizer {
-    pub fn new(input: &'static str) -> Self {
-        Self { input, pos: 0 }
+    pub fn new(file_name: &'static str, input: &'static str) -> Self {
+        Self {
+            file_name,
+            input,
+            pos: 0,
+        }
     }
 
     pub fn tokenize(mut self) -> Result<Vec<Token>> {
@@ -198,6 +203,7 @@ impl Tokenizer {
     fn comp_err<T>(&self, msg: impl Into<String>, loc: Loc) -> Result<T> {
         Err(Error::CompileError {
             message: msg.into(),
+            file_name: self.file_name,
             input: self.input,
             loc,
         })

@@ -6,7 +6,7 @@ mod test;
 /// Represents the configuration of this program.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Config {
-    pub input: String,
+    pub file_name: String,
     pub out_path: Option<String>,
     pub obj_paths: Vec<String>,
 }
@@ -77,7 +77,7 @@ impl Config {
             // Non-option arg is the input.
             // Error if input is already specified.
             if input.is_some() {
-                eprintln!("only ONE input is recognized");
+                eprintln!("only ONE input file is recognized");
                 usage(true)?;
             }
             input = Some(arg);
@@ -85,13 +85,13 @@ impl Config {
 
         // Check if the input is specified.
         let Some(input) = input else {
-            eprintln!("input is required");
+            eprintln!("input file is required");
             usage(true)?;
             unreachable!();
         };
 
         Ok(Self {
-            input,
+            file_name: input,
             out_path,
             obj_paths,
         })

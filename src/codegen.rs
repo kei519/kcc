@@ -363,6 +363,12 @@ impl<W: Write> Generator<W> {
                 for stmt in stmts {
                     self.codegen(stmt)?;
                 }
+
+                // Writes the epilogue.
+                writeln!(self.writer, ".L.return.{}:", name)?;
+                writeln!(self.writer, "  mov %rbp, %rsp")?;
+                writeln!(self.writer, "  pop %rbp")?;
+                writeln!(self.writer, "  ret")?;
             }
             NodeKind::Program { funcs, globals } => {
                 // Emits data

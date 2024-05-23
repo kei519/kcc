@@ -14,8 +14,10 @@ pub struct Generator<W: Write> {
     input: &'static str,
     /// Writer to write a generated assembly code.
     writer: W,
-    /// Global variables.
+    /// Local variables.
     locals: HashSet<Var>,
+    /// Global variables.
+    globals: HashSet<Var>,
     /// The number of jump labels.
     num_label: usize,
 }
@@ -28,6 +30,7 @@ impl Generator<File> {
             input,
             writer: file,
             locals: HashSet::new(),
+            globals: HashSet::new(),
             num_label: 0,
         })
     }
@@ -341,7 +344,18 @@ impl<W: Write> Generator<W> {
                     self.codegen(stmt)?;
                 }
             }
-            NodeKind::Program { funcs } => {
+            NodeKind::Program { funcs, globals } => {
+                // Emits data
+                writeln!(self.writer, ".data")?;
+                for var in globals {
+                    writeln!(self.writer, ".global {}", var.name)?;
+                    writeln!(self.writer, "{}:", var.name)?;
+                    writeln!(self.writer, "  .zero {}", var.ty.size)?;
+                    self.globals.insert(var);
+                }
+
+                // Emits text
+                writeln!(self.writer, ".text")?;
                 for func in funcs {
                     self.codegen(func)?;
                 }
@@ -376,9 +390,14 @@ impl<W: Write> Generator<W> {
                 // This unwrapping always succeed because existance of undeclared variable emit
                 // an error in parse phase.
                 let var = self.find_var(name).unwrap();
-                let offset = var.offset;
-                writeln!(self.writer, "  lea -{}(%rbp), %rdi", offset)?;
-                writeln!(self.writer, "  push %rdi")?;
+                if var.is_local {
+                    let offset = var.offset;
+                    writeln!(self.writer, "  lea -{}(%rbp), %rdi", offset)?;
+                    writeln!(self.writer, "  push %rdi")?;
+                } else {
+                    writeln!(self.writer, "  lea {}(%rip), %rdi", name)?;
+                    writeln!(self.writer, "  push %rdi")?;
+                }
                 Ok(())
             }
             NodeKind::UnOp {
@@ -411,7 +430,12 @@ impl<W: Write> Generator<W> {
         Ok(())
     }
 
+    /// Finds declared variables,
+    /// returns local one when the same name global and local oens are declared.
     fn find_var(&self, name: &str) -> Option<&Var> {
-        self.locals.iter().find(|var| var.name == name)
+        self.locals
+            .iter()
+            .chain(self.globals.iter())
+            .find(|var| var.name == name)
     }
 }

@@ -283,15 +283,21 @@ impl<W: Write> Generator<W> {
                 }
 
                 // Ensure that RSP is 16-byte boundary.
+                // RAX is set to 0 for variadic function.
+                // RAX represents the number of vector registers used.
                 writeln!(self.writer, "  mov %rsp, %rax")?;
                 writeln!(self.writer, "  and $15, %rax")?;
                 writeln!(self.writer, "  jz .L.call.{}", self.num_label)?;
+                writeln!(self.writer, "  mov $0, %rax")?;
                 writeln!(self.writer, "  call {}", name)?;
                 writeln!(self.writer, "  jmp .L.end.{}", self.num_label)?;
+
                 writeln!(self.writer, ".L.call.{}:", self.num_label)?;
                 writeln!(self.writer, "  sub $8, %rsp")?;
+                writeln!(self.writer, "  mov $0, %rax")?;
                 writeln!(self.writer, "  call {}", name)?;
                 writeln!(self.writer, "  add $8, %rsp")?;
+
                 writeln!(self.writer, ".L.end.{}:", self.num_label)?;
                 writeln!(self.writer, "  push %rax")?;
 

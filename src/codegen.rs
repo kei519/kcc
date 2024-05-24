@@ -180,7 +180,7 @@ impl<W: Write> Generator<W> {
                 self.store(&node.ty)?;
                 writeln!(self.writer, "  add ${}, %rsp", WORD_SIZE)?;
             }
-            NodeKind::Var(_) => {
+            NodeKind::Var(_) | NodeKind::Member { .. } => {
                 let ty = node.ty.clone();
                 self.gen_addr(node)?;
                 if !matches!(ty.kind, TypeKind::Array { .. }) {
@@ -422,17 +422,22 @@ impl<W: Write> Generator<W> {
                     writeln!(self.writer, "  lea {}(%rip), %rdi", var.name)?;
                     writeln!(self.writer, "  push %rdi")?;
                 }
-                Ok(())
             }
             NodeKind::UnOp {
                 op: UnOpKind::Deref,
                 operand,
             } => {
                 self.codegen(*operand)?;
-                Ok(())
             }
-            _ => self.comp_err("not an lvalue", node.loc),
+            NodeKind::Member { instance, member } => {
+                self.gen_addr(*instance)?;
+                writeln!(self.writer, "  pop %rax")?;
+                writeln!(self.writer, "  add ${}, %rax", member.offset)?;
+                writeln!(self.writer, "  push %rax")?;
+            }
+            _ => return self.comp_err("not an lvalue", node.loc),
         }
+        Ok(())
     }
 
     fn load(&mut self, ty: &Type) -> Result<()> {

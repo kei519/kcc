@@ -15,6 +15,26 @@ pub enum TypeKind {
     Void,
     /// Array.
     Array { base: Rc<Type>, len: usize },
+    /// struct.
+    Struct { members: Vec<Rc<Member>> },
+}
+
+/// Struct member.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Member {
+    pub name: &'static str,
+    pub ty: Rc<Type>,
+    pub offset: usize,
+}
+
+impl Member {
+    pub fn new(name: &'static str, ty: Rc<Type>) -> Self {
+        Self {
+            name,
+            ty,
+            offset: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -72,6 +92,14 @@ impl Type {
         })
     }
 
+    pub fn with_struct(members: Vec<Rc<Member>>) -> Rc<Self> {
+        let size = members.iter().fold(0, |acc, mem| acc + mem.ty.size);
+        Rc::new(Self {
+            kind: TypeKind::Struct { members },
+            size,
+        })
+    }
+
     pub fn is_integer(&self) -> bool {
         matches!(self.kind, TypeKind::Char | TypeKind::Int)
     }
@@ -86,5 +114,9 @@ impl Type {
 
     pub fn is_array(&self) -> bool {
         matches!(self.kind, TypeKind::Array { .. })
+    }
+
+    pub fn is_struct(&self) -> bool {
+        matches!(self.kind, TypeKind::Struct { .. })
     }
 }

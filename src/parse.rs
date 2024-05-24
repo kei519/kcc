@@ -502,6 +502,12 @@ impl Parser {
         self.assign()
     }
 
+    fn expr_stmt(&mut self) -> Result<Node> {
+        let node = self.expr()?;
+        let loc = node.loc;
+        Ok(Node::with_unop(UnOpKind::Expr, node, loc))
+    }
+
     /// ```text
     /// declaration = basetype ident ( "[" num "]" )* ( "=" expr )? ";"
     /// ```
@@ -606,13 +612,13 @@ impl Parser {
         } else if self.consume("for") {
             self.expect("(")?;
 
-            let init = self.expr().ok();
+            let init = self.expr_stmt().ok();
             self.expect(";")?;
 
             let cond = self.expr().ok();
             self.expect(";")?;
 
-            let inc = self.expr().ok();
+            let inc = self.expr_stmt().ok();
             self.expect(")")?;
 
             let stmt = self.stmt()?;
@@ -663,7 +669,7 @@ impl Parser {
         let node = if self.consume("return") {
             Node::with_unop(UnOpKind::Return, self.expr()?, loc)
         } else {
-            Node::with_unop(UnOpKind::Expr, self.expr()?, loc)
+            self.expr_stmt()?
         };
         self.expect(";")?;
 

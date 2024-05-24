@@ -175,9 +175,12 @@ impl<W: Write> Generator<W> {
                     return Ok(());
                 };
 
+                // Variable declaration is a statement not expression,
+                // so the node type is void.
+                let ty = var.ty.clone();
                 self.gen_addr(*var)?;
                 self.codegen(*init)?;
-                self.store(&node.ty)?;
+                self.store(&ty)?;
                 writeln!(self.writer, "  add ${}, %rsp", WORD_SIZE)?;
             }
             NodeKind::Var(_) | NodeKind::Member { .. } => {

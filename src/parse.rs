@@ -62,7 +62,7 @@ impl Parser {
         self.scope.truncate(prev);
     }
 
-    fn new_var(&mut self, name: &'static str, ty: Type, is_local: bool) -> Rc<RefCell<Var>> {
+    fn new_var(&mut self, name: &'static str, ty: Rc<Type>, is_local: bool) -> Rc<RefCell<Var>> {
         let var = Rc::new(RefCell::new(Var::new(name, ty, is_local)));
 
         self.scope.push(var.clone());
@@ -73,7 +73,7 @@ impl Parser {
     /// if it does not have the same name variable.
     ///
     /// Returns `true` if succeeds pushing.
-    fn new_lvar(&mut self, name: &'static str, ty: Type) -> Rc<RefCell<Var>> {
+    fn new_lvar(&mut self, name: &'static str, ty: Rc<Type>) -> Rc<RefCell<Var>> {
         let var = self.new_var(name, ty, true);
         self.locals.push(var.clone());
         var
@@ -83,7 +83,7 @@ impl Parser {
     /// if it does not have the same name variable.
     ///
     /// Returns `true` if succeeds pushing.
-    fn new_gvar(&mut self, name: &'static str, ty: Type) -> Rc<RefCell<Var>> {
+    fn new_gvar(&mut self, name: &'static str, ty: Rc<Type>) -> Rc<RefCell<Var>> {
         let var = self.new_var(name, ty, false);
         self.globals.push(var.clone());
         var
@@ -196,7 +196,7 @@ impl Parser {
     /// ```text
     /// basetype = ( "char" | "int" ) "*"*
     /// ```
-    fn basetype(&mut self) -> Result<Type> {
+    fn basetype(&mut self) -> Result<Rc<Type>> {
         let mut ty = if self.consume("char") {
             Type::char_type()
         } else {
@@ -211,7 +211,7 @@ impl Parser {
         Ok(ty)
     }
 
-    fn read_type_suffix(&mut self, base: Type) -> Result<Type> {
+    fn read_type_suffix(&mut self, base: Rc<Type>) -> Result<Rc<Type>> {
         if !self.consume("[") {
             return Ok(base);
         }
@@ -841,7 +841,7 @@ pub enum NodeKind {
     /// Function.
     Fn {
         name: &'static str,
-        return_ty: Type,
+        return_ty: Rc<Type>,
         params: Vec<Rc<RefCell<Var>>>,
         stmts: Vec<Node>,
         locals: Vec<Rc<RefCell<Var>>>,
@@ -856,7 +856,7 @@ pub enum NodeKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Node {
     pub data: NodeKind,
-    pub ty: Type,
+    pub ty: Rc<Type>,
     pub loc: Loc,
 }
 
@@ -1034,7 +1034,7 @@ impl Node {
         }
     }
 
-    pub fn with_fn_call(name: &'static str, ty: Type, args: Vec<Node>, loc: Loc) -> Self {
+    pub fn with_fn_call(name: &'static str, ty: Rc<Type>, args: Vec<Node>, loc: Loc) -> Self {
         Self {
             data: NodeKind::FnCall { name, args },
             ty,
@@ -1044,7 +1044,7 @@ impl Node {
 
     pub fn with_fn(
         name: &'static str,
-        return_ty: Type,
+        return_ty: Rc<Type>,
         params: Vec<Rc<RefCell<Var>>>,
         stmts: Vec<Node>,
         locals: Vec<Rc<RefCell<Var>>>,
@@ -1100,7 +1100,7 @@ pub struct Var {
     /// Variable kind if it is string.
     pub kind: VarKind,
     /// Type.
-    pub ty: Type,
+    pub ty: Rc<Type>,
     /// local of global
     pub is_local: bool,
     /// Variable offset from RBP.
@@ -1108,7 +1108,7 @@ pub struct Var {
 }
 
 impl Var {
-    pub fn new(name: &'static str, ty: Type, is_local: bool) -> Self {
+    pub fn new(name: &'static str, ty: Rc<Type>, is_local: bool) -> Self {
         Self {
             name,
             kind: VarKind::Others,

@@ -89,9 +89,8 @@ impl Parser {
         var
     }
 
-    /// Finds declared variables,
-    /// returns local one when the same name global and local oens are declared.
-    fn find_var(&mut self, name: &'static str) -> Option<Rc<RefCell<Var>>> {
+    /// Finds a variable by name.
+    fn find_var(&self, name: &'static str) -> Option<Rc<RefCell<Var>>> {
         self.scope
             .iter()
             .rev()

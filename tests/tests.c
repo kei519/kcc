@@ -263,6 +263,9 @@ int main() {
     assert(1, sub_short(7, 3, 3), "sub_short(7, 3, 3)");
     assert(1, sub_long(7, 3, 3), "sub_long(7, 3, 3)");
 
+    assert(97, 'a', "'a'");
+    assert(10, '\n', "'\\n'");
+
     printf("OK\n");
     return 0;
 }

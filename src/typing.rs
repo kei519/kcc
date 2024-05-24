@@ -58,8 +58,8 @@ impl Type {
     pub fn int_type() -> Rc<Self> {
         Rc::new(Self {
             kind: TypeKind::Int,
-            size: 8,
-            align: 8,
+            size: 4,
+            align: 4,
         })
     }
 

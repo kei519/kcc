@@ -232,12 +232,14 @@ impl Parser {
     fn is_typename(&self) -> bool {
         self.peek("char")
             || self.peek("int")
+            || self.peek("long")
+            || self.peek("short")
             || self.peek("struct")
             || self.find_typedef(self.tok()).is_some()
     }
 
     /// ```text
-    /// basetype = ( "char" | "int" | struct-decl | typedef-name ) "*"*
+    /// basetype = ( "char" | "int" | "long" | "short" | struct-decl | typedef-name ) "*"*
     /// ```
     fn basetype(&mut self) -> Result<Rc<Type>> {
         if !self.is_typename() {
@@ -248,6 +250,10 @@ impl Parser {
             Type::char_type()
         } else if self.consume("int") {
             Type::int_type()
+        } else if self.consume("long") {
+            Type::long_type()
+        } else if self.consume("short") {
+            Type::short_type()
         } else if self.consume("struct") {
             self.struct_decl()?
         } else {

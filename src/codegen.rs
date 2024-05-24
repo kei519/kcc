@@ -96,12 +96,20 @@ impl<W: Write> Generator<W> {
                 writeln!(self.writer, "  pop %rax")?;
                 match op {
                     BinOpKind::Add => writeln!(self.writer, "  add %rdi, %rax")?,
-                    BinOpKind::PtrAdd => {
-                        writeln!(
-                            self.writer,
-                            "  imul ${}, %rdi",
-                            node.ty.base().unwrap().size
-                        )?;
+                    BinOpKind::PtrAdd(lhs_is_ptr) => {
+                        if lhs_is_ptr {
+                            writeln!(
+                                self.writer,
+                                "  imul ${}, %rdi",
+                                node.ty.base().unwrap().size
+                            )?;
+                        } else {
+                            writeln!(
+                                self.writer,
+                                "  imul ${}, %rax",
+                                node.ty.base().unwrap().size
+                            )?;
+                        }
                         writeln!(self.writer, "  add %rdi, %rax")?;
                     }
                     BinOpKind::Sub => writeln!(self.writer, "  sub %rdi, %rax")?,

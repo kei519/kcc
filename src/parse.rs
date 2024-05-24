@@ -765,7 +765,9 @@ pub enum BinOpKind {
     /// num + num
     Add,
     /// ptr + num or num + ptr
-    PtrAdd,
+    ///
+    /// [bool] value is `true` when `lhs` is ptr.
+    PtrAdd(bool),
     /// num - num
     Sub,
     /// ptr - num
@@ -901,9 +903,9 @@ impl Node {
                 if lhs.ty.is_integer() && rhs.ty.is_integer() {
                     (op, Type::int_type())
                 } else if lhs.ty.base().is_some() && rhs.ty.is_integer() {
-                    (BinOpKind::PtrAdd, lhs.ty.clone())
+                    (BinOpKind::PtrAdd(true), lhs.ty.clone())
                 } else if lhs.ty.is_integer() && rhs.ty.base().is_some() {
-                    (BinOpKind::PtrAdd, rhs.ty.clone())
+                    (BinOpKind::PtrAdd(false), rhs.ty.clone())
                 } else {
                     return None;
                 }

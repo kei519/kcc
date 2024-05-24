@@ -458,7 +458,7 @@ impl Parser {
     }
 
     /// ```text
-    /// postfix = primary ( "[" expr "]" | "." ident )*
+    /// postfix = primary ( "[" expr "]" | "." ident | "->" ident )*
     /// ```
     fn postfix(&mut self) -> Result<Node> {
         let loc = self.loc();
@@ -476,6 +476,10 @@ impl Parser {
                 self.expect("]")?;
                 node = Node::with_unop(UnOpKind::Deref, exp, loc);
             } else if self.consume(".") {
+                node = self.struct_ref(node)?;
+            } else if self.consume("->") {
+                // x->y is short for (*x).y
+                node = Node::with_unop(UnOpKind::Deref, node, loc);
                 node = self.struct_ref(node)?;
             } else {
                 break;

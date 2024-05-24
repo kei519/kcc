@@ -64,6 +64,11 @@ impl Tokenizer {
                 continue;
             }
 
+            if self.head() == b'\'' {
+                ret.push(self.read_char_literal()?);
+                continue;
+            }
+
             // Numeric literal.
             if self.head().is_ascii_digit() {
                 let start = self.pos;
@@ -196,6 +201,30 @@ impl Tokenizer {
         self.next();
         let end = self.pos;
         Ok(Token::with_str(buf, Loc::range(start, end)))
+    }
+
+    fn read_char_literal(&mut self) -> Result<Token> {
+        let start = self.pos;
+
+        if !self.next() {
+            return self.comp_err("unclosed char literal", Loc::at(start));
+        }
+
+        let c = if self.head() == b'\\' {
+            if !self.next() {
+                return self.comp_err("unclosed char literal", Loc::at(start));
+            }
+            get_escape_char(self.head())
+        } else {
+            self.head()
+        };
+
+        if self.next() && self.head() == b'\'' {
+            self.next();
+            Ok(Token::with_num(c as usize, Loc::range(start, self.pos + 1)))
+        } else {
+            self.comp_err("char literal too long", Loc::at(start))
+        }
     }
 
     fn comp_err<T>(&self, msg: impl Into<String>, loc: Loc) -> Result<T> {

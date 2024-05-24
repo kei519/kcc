@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::util::WORD_SIZE;
+use crate::util::{align_to, WORD_SIZE};
 
 /// Represents a type.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -42,6 +42,8 @@ pub struct Type {
     pub kind: TypeKind,
     /// sizeof([TypeKind])
     pub size: usize,
+    /// alignment
+    pub align: usize,
 }
 
 impl Type {
@@ -49,6 +51,7 @@ impl Type {
         Rc::new(Self {
             kind: TypeKind::Char,
             size: 1,
+            align: 1,
         })
     }
 
@@ -56,6 +59,7 @@ impl Type {
         Rc::new(Self {
             kind: TypeKind::Int,
             size: 8,
+            align: 8,
         })
     }
 
@@ -63,15 +67,18 @@ impl Type {
         Rc::new(Self {
             kind: TypeKind::Ptr { base },
             size: WORD_SIZE,
+            align: WORD_SIZE,
         })
     }
 
     pub fn with_array(base: Rc<Type>, len: usize) -> Rc<Self> {
         let size = base.size * len;
+        let align = base.align;
 
         Rc::new(Self {
             kind: TypeKind::Array { base, len },
             size,
+            align,
         })
     }
 
@@ -82,6 +89,7 @@ impl Type {
                 len: len,
             },
             size: len,
+            align: 1,
         })
     }
 
@@ -89,14 +97,17 @@ impl Type {
         Rc::new(Self {
             kind: TypeKind::Void,
             size: 0,
+            align: 0,
         })
     }
 
     pub fn with_struct(members: Vec<Rc<Member>>) -> Rc<Self> {
+        let align = members.iter().map(|mem| mem.ty.align).max().unwrap_or(0);
         let size = members.iter().fold(0, |acc, mem| acc + mem.ty.size);
         Rc::new(Self {
             kind: TypeKind::Struct { members },
-            size,
+            size: align_to(size, align),
+            align,
         })
     }
 

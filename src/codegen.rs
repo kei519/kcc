@@ -1,7 +1,7 @@
 use crate::{
     parse::{BinOpKind, Node, NodeKind, UnOpKind, VarKind},
     typing::{Type, TypeKind},
-    util::{Error, Loc, Result, WORD_SIZE},
+    util::{align_to, Error, Loc, Result, WORD_SIZE},
 };
 
 use std::{fs::File, io::Write, path::Path};
@@ -333,6 +333,7 @@ impl<W: Write> Generator<W> {
 
                 for local in locals.into_iter().rev() {
                     let mut local = local.borrow_mut();
+                    offset = align_to(offset, local.ty.align);
                     offset += local.ty.size;
                     local.offset = offset;
                 }
@@ -471,8 +472,4 @@ impl<W: Write> Generator<W> {
             loc,
         })
     }
-}
-
-fn align_to(n: usize, align: usize) -> usize {
-    (n + align - 1) & !(align - 1)
 }

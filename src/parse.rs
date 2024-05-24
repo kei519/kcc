@@ -3,7 +3,7 @@ use std::{cell::RefCell, mem, rc::Rc};
 use crate::{
     tokenize::{Token, TokenKind},
     typing::{Member, Type, TypeKind},
-    util::{Error, Loc, Result},
+    util::{align_to, Error, Loc, Result},
 };
 
 pub struct Parser {
@@ -243,10 +243,12 @@ impl Parser {
         let mut offset = 0;
         let members = members
             .into_iter()
-            .map(|mut member| {
-                member.offset = offset;
-                offset += member.ty.size;
-                Rc::new(member)
+            .map(|mut mem| {
+                offset = align_to(offset, mem.ty.align);
+                mem.offset = offset;
+                offset += mem.ty.size;
+
+                Rc::new(mem)
             })
             .collect();
 

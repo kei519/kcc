@@ -114,6 +114,10 @@ impl From<io::Error> for Error {
     }
 }
 
+pub fn align_to(n: usize, align: usize) -> usize {
+    (n + align - 1) & !(align - 1)
+}
+
 /// Assemble the given assemly code located at `asm_path` into a executable located at `out_path`.
 pub fn assemble<T>(
     asm_path: impl AsRef<Path>,

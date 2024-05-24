@@ -9,6 +9,10 @@ pub enum TypeKind {
     Char,
     /// int
     Int,
+    /// long
+    Long,
+    /// short
+    Short,
     /// Pointer.
     Ptr { base: Rc<Type> },
     /// Void
@@ -63,6 +67,22 @@ impl Type {
         })
     }
 
+    pub fn long_type() -> Rc<Self> {
+        Rc::new(Self {
+            kind: TypeKind::Long,
+            size: 8,
+            align: 8,
+        })
+    }
+
+    pub fn short_type() -> Rc<Self> {
+        Rc::new(Self {
+            kind: TypeKind::Short,
+            size: 2,
+            align: 2,
+        })
+    }
+
     pub fn with_ptr(base: Rc<Type>) -> Rc<Self> {
         Rc::new(Self {
             kind: TypeKind::Ptr { base },
@@ -112,7 +132,10 @@ impl Type {
     }
 
     pub fn is_integer(&self) -> bool {
-        matches!(self.kind, TypeKind::Char | TypeKind::Int)
+        matches!(
+            self.kind,
+            TypeKind::Char | TypeKind::Int | TypeKind::Long | TypeKind::Short
+        )
     }
 
     pub fn base(&self) -> Option<Rc<Self>> {

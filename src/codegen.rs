@@ -8,6 +8,7 @@ use std::{fs::File, io::Write, path::Path};
 
 /// Registers used to pass function variables.
 const ARG_REG1: [&'static str; 6] = ["dil", "sil", "dl", "cl", "r8b", "r9b"];
+const ARG_REG2: [&'static str; 6] = ["di", "si", "dx", "cx", "r8w", "r9w"];
 const ARG_REG4: [&'static str; 6] = ["edi", "esi", "edx", "ecx", "r8d", "r9d"];
 const ARG_REG8: [&'static str; 6] = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
 
@@ -354,6 +355,8 @@ impl<W: Write> Generator<W> {
                     let (size, offset) = (param.ty.size, param.offset);
                     if size == 1 {
                         writeln!(self.writer, "  mov %{}, -{}(%rbp)", ARG_REG1[i], offset)?;
+                    } else if size == 2 {
+                        writeln!(self.writer, "  mov %{}, -{}(%rbp)", ARG_REG2[i], offset)?;
                     } else if size == 4 {
                         writeln!(self.writer, "  mov %{}, -{}(%rbp)", ARG_REG4[i], offset)?;
                     } else {
@@ -453,6 +456,8 @@ impl<W: Write> Generator<W> {
         writeln!(self.writer, "  pop %rax")?;
         if ty.size == 1 {
             writeln!(self.writer, "  movsbq (%rax), %rax")?;
+        } else if ty.size == 2 {
+            writeln!(self.writer, "  movswq (%rax), %rax")?;
         } else if ty.size == 4 {
             writeln!(self.writer, "  movslq (%rax), %rax")?;
         } else {
@@ -468,6 +473,8 @@ impl<W: Write> Generator<W> {
         writeln!(self.writer, "  pop %rdi")?;
         if ty.size == 1 {
             writeln!(self.writer, "  mov %al, (%rdi)")?;
+        } else if ty.size == 2 {
+            writeln!(self.writer, "  mov %ax, (%rdi)")?;
         } else if ty.size == 4 {
             writeln!(self.writer, "  mov %eax, (%rdi)")?;
         } else {

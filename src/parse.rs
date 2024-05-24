@@ -11,8 +11,8 @@ pub struct Parser {
     input: &'static str,
     tokens: Vec<Token>,
 
-    // C has tow block scopes; one is for variables and the other is for struct tags.
-    var_scope: Vec<Rc<RefCell<Var>>>,
+    // C has tow block scopes; one is for variables/typedefs and the other is for struct tags.
+    var_scope: Vec<VarScope>,
     tag_scope: Vec<TagScope>,
 
     locals: Vec<Rc<RefCell<Var>>>,
@@ -73,8 +73,6 @@ impl Parser {
 
     fn new_var(&mut self, name: &'static str, ty: Rc<Type>, is_local: bool) -> Rc<RefCell<Var>> {
         let var = Rc::new(RefCell::new(Var::new(name, ty, is_local)));
-
-        self.var_scope.push(var.clone());
         var
     }
 
@@ -84,6 +82,7 @@ impl Parser {
     /// Returns `true` if succeeds pushing.
     fn new_lvar(&mut self, name: &'static str, ty: Rc<Type>) -> Rc<RefCell<Var>> {
         let var = self.new_var(name, ty, true);
+        self.push_scope_var(var.clone());
         self.locals.push(var.clone());
         var
     }
@@ -94,21 +93,41 @@ impl Parser {
     /// Returns `true` if succeeds pushing.
     fn new_gvar(&mut self, name: &'static str, ty: Rc<Type>) -> Rc<RefCell<Var>> {
         let var = self.new_var(name, ty, false);
+        self.push_scope_var(var.clone());
         self.globals.push(var.clone());
         var
+    }
+
+    fn push_scope_var(&mut self, var: Rc<RefCell<Var>>) {
+        self.var_scope.push(VarScope::Var(var));
+    }
+
+    fn push_scope_typedef(&mut self, name: &'static str, ty: Rc<Type>) {
+        self.var_scope.push(VarScope::TypeDef { name, ty })
     }
 
     fn push_tag_scope(&mut self, name: &'static str, ty: Rc<Type>) {
         self.tag_scope.push(TagScope { name, ty });
     }
 
-    /// Finds a variable by name.
-    fn find_var(&self, name: &'static str) -> Option<Rc<RefCell<Var>>> {
+    /// Finds a variable or a typedef by name.
+    fn find_var(&self, name: &'static str) -> Option<VarScope> {
         self.var_scope
             .iter()
             .rev()
-            .find(|var| var.borrow().name == name)
+            .find(|var| var.name() == name)
             .map(|var| var.clone())
+    }
+
+    fn find_typedef(&self, tok: &Token) -> Option<Rc<Type>> {
+        let TokenKind::Ident(name) = tok.data else {
+            return None;
+        };
+
+        self.find_var(name).and_then(|sc| match sc {
+            VarScope::TypeDef { ty, .. } => Some(ty.clone()),
+            _ => None,
+        })
     }
 
     /// Finds a tag by name.
@@ -211,11 +230,14 @@ impl Parser {
 
     /// Returns true if the next token represents a type.
     fn is_typename(&self) -> bool {
-        self.peek("char") || self.peek("int") || self.peek("struct")
+        self.peek("char")
+            || self.peek("int")
+            || self.peek("struct")
+            || self.find_typedef(self.tok()).is_some()
     }
 
     /// ```text
-    /// basetype = ( "char" | "int" | struct-decl ) "*"*
+    /// basetype = ( "char" | "int" | struct-decl | typedef-name ) "*"*
     /// ```
     fn basetype(&mut self) -> Result<Rc<Type>> {
         if !self.is_typename() {
@@ -226,8 +248,15 @@ impl Parser {
             Type::char_type()
         } else if self.consume("int") {
             Type::int_type()
-        } else {
+        } else if self.consume("struct") {
             self.struct_decl()?
+        } else {
+            let loc = self.loc();
+            let name = self.expect_ident()?;
+            match self.find_var(name) {
+                Some(VarScope::TypeDef { ty, .. }) => ty,
+                _ => return self.comp_err("undeclared type name", loc),
+            }
         };
 
         while self.consume("*") {
@@ -253,8 +282,6 @@ impl Parser {
     ///             | "struct" ident? "{" struct-member* "}"
     /// ```
     fn struct_decl(&mut self) -> Result<Rc<Type>> {
-        self.expect("struct")?;
-
         // Read a struct tag.
         let tag_loc = self.loc();
         let tag = self.consume_ident();
@@ -398,6 +425,9 @@ impl Parser {
 
             let Some(var) = self.find_var(name) else {
                 return self.comp_err("undeclared variable", loc);
+            };
+            let VarScope::Var(var) = var else {
+                return self.comp_err("not variable", loc);
             };
             Node::with_var(var, loc)
         } else if let TokenKind::Str(s) = self.tok().data {
@@ -686,6 +716,7 @@ impl Parser {
 
     /// ```text
     /// stmt = declaration
+    ///      | "typedef" basetype ident ( "[" num "]" )* ";"
     ///      | block = "{" stmt* "}"
     ///      | ( "return" )? expr ";"
     ///      | "while" "(" expr ")" stmt
@@ -700,7 +731,15 @@ impl Parser {
         let loc = self.loc();
 
         // Recognizes a block.
-        if self.consume("{") {
+        if self.consume("typedef") {
+            let ty = self.basetype()?;
+            let name = self.expect_ident()?;
+            let ty = self.read_type_suffix(ty)?;
+            let loc = loc + self.loc();
+            self.expect(";")?;
+            self.push_scope_typedef(name, ty);
+            return Ok(Node::with_typedef(loc));
+        } else if self.consume("{") {
             let mut stmts = vec![];
             let brace_loc = loc;
             let mut loc = loc + self.loc();
@@ -948,6 +987,8 @@ pub enum NodeKind {
     },
     /// Type declaration.
     TypeDecl,
+    /// typedef,
+    TypeDef,
     /// Variable.
     Var(Rc<RefCell<Var>>),
     /// Block.
@@ -1097,6 +1138,14 @@ impl Node {
     pub fn with_type_decl(loc: Loc) -> Self {
         Self {
             data: NodeKind::TypeDecl,
+            ty: Type::void(),
+            loc,
+        }
+    }
+
+    pub fn with_typedef(loc: Loc) -> Self {
+        Self {
+            data: NodeKind::TypeDef,
             ty: Type::void(),
             loc,
         }
@@ -1270,6 +1319,22 @@ impl Var {
             ty,
             is_local,
             offset: 0,
+        }
+    }
+}
+
+/// Scope for local variables, global variables or typedefs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VarScope {
+    Var(Rc<RefCell<Var>>),
+    TypeDef { name: &'static str, ty: Rc<Type> },
+}
+
+impl VarScope {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Var(var) => var.borrow().name,
+            Self::TypeDef { name, .. } => name,
         }
     }
 }

@@ -10,7 +10,11 @@ pub struct Parser {
     file_name: &'static str,
     input: &'static str,
     tokens: Vec<Token>,
-    scope: Vec<Rc<RefCell<Var>>>,
+
+    // C has tow block scopes; one is for variables and the other is for struct tags.
+    var_scope: Vec<Rc<RefCell<Var>>>,
+    tag_scope: Vec<TagScope>,
+
     locals: Vec<Rc<RefCell<Var>>>,
     globals: Vec<Rc<RefCell<Var>>>,
     num_label: usize,
@@ -23,7 +27,8 @@ impl Parser {
             file_name,
             input,
             tokens,
-            scope: vec![],
+            var_scope: vec![],
+            tag_scope: vec![],
             locals: vec![],
             globals: vec![],
             num_label: 0,
@@ -53,19 +58,23 @@ impl Parser {
     }
 
     /// Returns the current last position of scope.
-    fn enter_scope(&self) -> usize {
-        self.scope.len()
+    fn enter_scope(&self) -> Scope {
+        Scope {
+            var_index: self.var_scope.len(),
+            tag_index: self.tag_scope.len(),
+        }
     }
 
     /// Reverts the scope previous one with return value of [enter_scope()].
-    fn exit_scope(&mut self, prev: usize) {
-        self.scope.truncate(prev);
+    fn leave_scope(&mut self, prev: Scope) {
+        self.var_scope.truncate(prev.var_index);
+        self.tag_scope.truncate(prev.tag_index);
     }
 
     fn new_var(&mut self, name: &'static str, ty: Rc<Type>, is_local: bool) -> Rc<RefCell<Var>> {
         let var = Rc::new(RefCell::new(Var::new(name, ty, is_local)));
 
-        self.scope.push(var.clone());
+        self.var_scope.push(var.clone());
         var
     }
 
@@ -89,13 +98,26 @@ impl Parser {
         var
     }
 
+    fn push_tag_scope(&mut self, name: &'static str, ty: Rc<Type>) {
+        self.tag_scope.push(TagScope { name, ty });
+    }
+
     /// Finds a variable by name.
     fn find_var(&self, name: &'static str) -> Option<Rc<RefCell<Var>>> {
-        self.scope
+        self.var_scope
             .iter()
             .rev()
             .find(|var| var.borrow().name == name)
             .map(|var| var.clone())
+    }
+
+    /// Finds a tag by name.
+    fn find_tag(&self, name: &'static str) -> Option<TagScope> {
+        self.tag_scope
+            .iter()
+            .rev()
+            .find(|tag| tag.name == name)
+            .map(|tag| tag.clone())
     }
 
     /// Determines whether the next top-level item is a function
@@ -227,10 +249,24 @@ impl Parser {
     }
 
     /// ```text
-    /// struct-decl = "struct" "{" struct-member* "}"
+    /// struct-decl = "struct" ident
+    ///             | "struct" ident? "{" struct-member* "}"
     /// ```
     fn struct_decl(&mut self) -> Result<Rc<Type>> {
         self.expect("struct")?;
+
+        // Read a struct tag.
+        let tag_loc = self.loc();
+        let tag = self.consume_ident();
+        if let Some(tag) = tag {
+            if !self.peek("{") {
+                return match self.find_tag(tag).map(|tag| tag.ty.clone()) {
+                    Some(ty) => Ok(ty),
+                    None => self.comp_err("unknown struct type", tag_loc),
+                };
+            }
+        }
+
         self.expect("{")?;
 
         let mut members = vec![];
@@ -251,7 +287,14 @@ impl Parser {
             })
             .collect();
 
-        Ok(Type::with_struct(members))
+        let ty = Type::with_struct(members);
+
+        // Register the struct type if a name was given.
+        if tag.is_some() {
+            self.push_tag_scope(tag.unwrap(), ty.clone());
+        }
+
+        Ok(ty)
     }
 
     /// ```text
@@ -573,11 +616,16 @@ impl Parser {
 
     /// ```text
     /// declaration = basetype ident ( "[" num "]" )* ( "=" expr )? ";"
+    ///             | basetype ";"
     /// ```
     fn decl(&mut self) -> Result<Node> {
         let loc = self.loc();
 
         let ty = self.basetype()?;
+        let decl_loc = loc + self.loc();
+        if self.consume(";") {
+            return Ok(Node::with_type_decl(decl_loc));
+        }
 
         let name_loc = self.loc();
         let Some(name) = self.consume_ident() else {
@@ -627,7 +675,7 @@ impl Parser {
             let loc = loc + self.loc();
             self.expect(")")?;
 
-            self.exit_scope(prev_scope);
+            self.leave_scope(prev_scope);
             Ok(Node::with_stmt_expr(stmts, loc))
         }
     }
@@ -661,7 +709,7 @@ impl Parser {
                 stmts.push(self.stmt()?);
                 loc += self.loc();
             }
-            self.exit_scope(prev_scope);
+            self.leave_scope(prev_scope);
             return Ok(Node::with_block(stmts, loc));
         } else if self.consume("while") {
             self.expect("(")?;
@@ -766,7 +814,7 @@ impl Parser {
             stmts.push(self.stmt()?);
         };
 
-        self.exit_scope(prev_scope);
+        self.leave_scope(prev_scope);
         let locals = mem::replace(&mut self.locals, vec![]);
 
         Ok(Node::with_fn(name, ty, params, stmts, locals, loc))
@@ -894,6 +942,8 @@ pub enum NodeKind {
         /// Initial value.
         init: Option<Box<Node>>,
     },
+    /// Type declaration.
+    TypeDecl,
     /// Variable.
     Var(Rc<RefCell<Var>>),
     /// Block.
@@ -1035,6 +1085,14 @@ impl Node {
                 var: Box::new(var),
                 init: init.map(|node| Box::new(node)),
             },
+            ty: Type::void(),
+            loc,
+        }
+    }
+
+    pub fn with_type_decl(loc: Loc) -> Self {
+        Self {
+            data: NodeKind::TypeDecl,
             ty: Type::void(),
             loc,
         }
@@ -1210,4 +1268,17 @@ impl Var {
             offset: 0,
         }
     }
+}
+
+/// Scope for struct tags.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TagScope {
+    name: &'static str,
+    ty: Rc<Type>,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Scope {
+    pub var_index: usize,
+    pub tag_index: usize,
 }

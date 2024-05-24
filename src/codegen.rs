@@ -390,6 +390,7 @@ impl<W: Write> Generator<W> {
                     self.codegen(func)?;
                 }
             }
+            NodeKind::TypeDecl => {}
         }
         Ok(())
     }

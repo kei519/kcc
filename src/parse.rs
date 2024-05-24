@@ -2,7 +2,7 @@ use std::{cell::RefCell, mem, rc::Rc};
 
 use crate::{
     tokenize::{Token, TokenKind},
-    typing::{Type, TypeKind},
+    typing::{Member, Type, TypeKind},
     util::{Error, Loc, Result},
 };
 
@@ -190,18 +190,23 @@ impl Parser {
 
     /// Returns true if the next token represents a type.
     fn is_typename(&self) -> bool {
-        self.peek("char") || self.peek("int")
+        self.peek("char") || self.peek("int") || self.peek("struct")
     }
 
     /// ```text
-    /// basetype = ( "char" | "int" ) "*"*
+    /// basetype = ( "char" | "int" | struct-decl ) "*"*
     /// ```
     fn basetype(&mut self) -> Result<Rc<Type>> {
+        if !self.is_typename() {
+            return self.comp_err("typename expected", self.loc());
+        }
+
         let mut ty = if self.consume("char") {
             Type::char_type()
-        } else {
-            self.expect("int")?;
+        } else if self.consume("int") {
             Type::int_type()
+        } else {
+            self.struct_decl()?
         };
 
         while self.consume("*") {
@@ -220,6 +225,43 @@ impl Parser {
         self.expect("]")?;
         let base = self.read_type_suffix(base)?;
         Ok(Type::with_array(base, sz))
+    }
+
+    /// ```text
+    /// struct-decl = "struct" "{" struct-member* "}"
+    /// ```
+    fn struct_decl(&mut self) -> Result<Rc<Type>> {
+        self.expect("struct")?;
+        self.expect("{")?;
+
+        let mut members = vec![];
+
+        while !self.consume("}") {
+            members.push(self.struct_member()?);
+        }
+
+        let mut offset = 0;
+        let members = members
+            .into_iter()
+            .map(|mut member| {
+                member.offset = offset;
+                offset += member.ty.size;
+                Rc::new(member)
+            })
+            .collect();
+
+        Ok(Type::with_struct(members))
+    }
+
+    /// ```text
+    /// struct-member = basetype ident ( "[" num "]" )* ";"
+    /// ```
+    fn struct_member(&mut self) -> Result<Member> {
+        let ty = self.basetype()?;
+        let name = self.expect_ident()?;
+        let ty = self.read_type_suffix(ty)?;
+        self.expect(";")?;
+        Ok(Member::new(name, ty))
     }
 
     /// ```text
@@ -357,23 +399,43 @@ impl Parser {
         Ok(node)
     }
 
+    fn struct_ref(&mut self, instance: Node) -> Result<Node> {
+        if !instance.ty.is_struct() {
+            return self.comp_err("not a struct", instance.loc);
+        }
+
+        let mem_loc = self.loc();
+        let Some(mem) = find_member(&instance.ty, self.expect_ident()?) else {
+            return self.comp_err("no such member", mem_loc);
+        };
+
+        let loc = instance.loc + mem_loc;
+        Ok(Node::with_member(instance, mem, loc))
+    }
+
     /// ```text
-    /// postfix = primary ( "[" expr "]" )*
+    /// postfix = primary ( "[" expr "]" | "." ident )*
     /// ```
     fn postfix(&mut self) -> Result<Node> {
         let loc = self.loc();
         let mut node = self.primary()?;
 
-        while self.consume("[") {
-            let exp_loc = self.loc();
+        loop {
+            if self.consume("[") {
+                let exp_loc = self.loc();
 
-            // x[y] is short for *(x+y)
-            let exp = Node::with_binop(BinOpKind::Add, node, self.expr()?)
-                .ok_or_else(|| self.binop_err(exp_loc))?;
+                // x[y] is short for *(x+y)
+                let exp = Node::with_binop(BinOpKind::Add, node, self.expr()?)
+                    .ok_or_else(|| self.binop_err(exp_loc))?;
 
-            let loc = loc + self.loc();
-            self.expect("]")?;
-            node = Node::with_unop(UnOpKind::Deref, exp, loc);
+                let loc = loc + self.loc();
+                self.expect("]")?;
+                node = Node::with_unop(UnOpKind::Deref, exp, loc);
+            } else if self.consume(".") {
+                node = self.struct_ref(node)?;
+            } else {
+                break;
+            }
         }
 
         Ok(node)
@@ -742,6 +804,20 @@ impl Parser {
     }
 }
 
+/// Finds the member of struct type `ty` whose name is `name` and return it.
+/// # Remarks
+///
+/// `ty.kind` must be [TypeKind::Struct].
+fn find_member(ty: &Type, name: &'static str) -> Option<Rc<Member>> {
+    match &ty.kind {
+        TypeKind::Struct { members } => members
+            .into_iter()
+            .find(|mem| mem.name == name)
+            .map(|mem| mem.clone()),
+        _ => unreachable!("find_member() requires ty.kind is TypeKind::Struct"),
+    }
+}
+
 /// Represents a unary operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UnOpKind {
@@ -806,6 +882,10 @@ pub enum NodeKind {
         op: BinOpKind,
         lhs: Box<Node>,
         rhs: Box<Node>,
+    },
+    Member {
+        instance: Box<Node>,
+        member: Rc<Member>,
     },
     /// Variable declaration.
     VarDecl {
@@ -934,6 +1014,18 @@ impl Node {
             ty,
             loc,
         })
+    }
+
+    pub fn with_member(instance: Node, member: Rc<Member>, loc: Loc) -> Self {
+        let ty = member.ty.clone();
+        Self {
+            data: NodeKind::Member {
+                instance: Box::new(instance),
+                member,
+            },
+            ty,
+            loc,
+        }
     }
 
     pub fn with_var_decl(var: Node, init: Option<Node>, loc: Loc) -> Self {
